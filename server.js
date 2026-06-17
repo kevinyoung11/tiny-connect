@@ -17,7 +17,9 @@ const host = process.env.HOST || '0.0.0.0';
 const defaultShell = os.platform() === 'win32' ? 'powershell.exe' : '/bin/zsh';
 const shell = process.env.TERMINAL_SHELL || defaultShell;
 const startupCommand = process.env.STARTUP_COMMAND || '';
-const keyStore = createKeyStore(path.join(__dirname, '.keys'));
+// On Vercel the project root is read-only; /tmp is the only writable directory.
+const keysDir = process.env.VERCEL ? '/tmp/.keys' : path.join(__dirname, '.keys');
+const keyStore = createKeyStore(keysDir);
 
 const app = express();
 app.use(express.json({ limit: '256kb' }));
@@ -239,18 +241,24 @@ function sendExit(ws, exitCode) {
   }
 }
 
-server.listen(port, host, () => {
-  const nets = os.networkInterfaces();
-  const addresses = Object.values(nets)
-    .flat()
-    .filter((net) => net && net.family === 'IPv4' && !net.internal)
-    .map((net) => `http://${net.address}:${port}`);
+// Vercel imports this module and invokes the exported server directly;
+// calling listen() is only needed for local execution.
+export default server;
 
-  console.log(`yy-terminal listening on http://localhost:${port}`);
-  for (const address of addresses) {
-    console.log(`LAN: ${address}`);
-  }
-  if (startupCommand) {
-    console.log(`Startup command: ${startupCommand}`);
-  }
-});
+if (!process.env.VERCEL) {
+  server.listen(port, host, () => {
+    const nets = os.networkInterfaces();
+    const addresses = Object.values(nets)
+      .flat()
+      .filter((net) => net && net.family === 'IPv4' && !net.internal)
+      .map((net) => `http://${net.address}:${port}`);
+
+    console.log(`yy-terminal listening on http://localhost:${port}`);
+    for (const address of addresses) {
+      console.log(`LAN: ${address}`);
+    }
+    if (startupCommand) {
+      console.log(`Startup command: ${startupCommand}`);
+    }
+  });
+}

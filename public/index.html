@@ -3,47 +3,147 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <title>YY Terminal</title>
+    <title>TinyConnect</title>
     <link rel="stylesheet" href="/xterm/css/xterm.css" />
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
-    <main class="app">
-      <form id="connectForm" class="connect-form" autocomplete="off">
-        <select id="mode" aria-label="Connection mode">
-          <option value="local">Local</option>
-          <option value="ssh">SSH</option>
-        </select>
-        <input id="host" data-ssh-field type="text" placeholder="Host" />
-        <input id="port" data-ssh-field type="number" inputmode="numeric" placeholder="22" value="22" />
-        <input id="username" data-ssh-field type="text" placeholder="Username" />
-        <select id="keyId" data-ssh-field aria-label="SSH key"></select>
-        <input id="passphrase" data-ssh-field type="password" placeholder="Passphrase 可选" />
-        <button type="submit">Connect</button>
-      </form>
-      <form id="keyForm" class="key-form" autocomplete="off">
-        <input id="keyName" type="text" placeholder="Key name" />
-        <textarea id="privateKey" placeholder="Paste private key"></textarea>
-        <button type="submit">Save Key</button>
-      </form>
-      <header class="toolbar">
-        <div class="brand">
-          <strong>YY Terminal</strong>
-          <span id="status">connecting</span>
+
+    <!-- Backdrop -->
+    <div class="backdrop" id="backdrop"></div>
+
+    <!-- Connection modal -->
+    <div class="modal" id="connectModal" role="dialog" aria-modal="true" aria-label="New Connection">
+      <div class="modal-brand">
+        <div class="modal-icon">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
+            <polyline points="15 3 21 3 21 9"/>
+            <line x1="10" y1="14" x2="21" y2="3"/>
+          </svg>
         </div>
-        <div class="actions">
-          <button type="button" data-send="\u0003" title="Ctrl-C">Ctrl-C</button>
-          <button type="button" data-send="\u001b" title="Esc">Esc</button>
-          <button type="button" data-send="\u0015" title="Ctrl-U">Ctrl-U</button>
-          <button type="button" id="paste">Paste</button>
+        <div>
+          <h1 class="modal-title">TinyConnect</h1>
+          <p class="modal-sub">SSH Terminal</p>
         </div>
-      </header>
-      <section id="terminal" aria-label="Terminal"></section>
-      <form id="commandBar" class="command-bar" autocomplete="off">
-        <input id="commandInput" type="text" placeholder="输入命令，回车发送" />
-        <button type="submit">Send</button>
+      </div>
+
+      <form id="connectForm" autocomplete="off" novalidate>
+        <div class="mode-tabs" role="tablist">
+          <button type="button" class="tab active" data-mode="ssh" role="tab" aria-selected="true">SSH</button>
+          <button type="button" class="tab" data-mode="local" role="tab" aria-selected="false">Local</button>
+        </div>
+
+        <div id="sshFields">
+          <div class="field-row">
+            <div class="field" style="flex:1">
+              <label for="host">Host</label>
+              <input id="host" type="text" placeholder="192.168.1.1" autocapitalize="none" autocorrect="off" spellcheck="false" />
+            </div>
+            <div class="field" style="flex:0 0 76px">
+              <label for="port">Port</label>
+              <input id="port" type="number" inputmode="numeric" placeholder="22" value="22" />
+            </div>
+          </div>
+          <div class="field">
+            <label for="username">Username</label>
+            <input id="username" type="text" placeholder="root" autocapitalize="none" autocorrect="off" spellcheck="false" />
+          </div>
+          <div class="field">
+            <label>SSH Key</label>
+            <div class="key-row">
+              <select id="keyId"></select>
+              <button type="button" class="btn-add-key" id="addKeyBtn" title="Add new key">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
+                  <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+                </svg>
+              </button>
+            </div>
+          </div>
+          <div class="field">
+            <label for="passphrase">Passphrase <span class="label-opt">optional</span></label>
+            <input id="passphrase" type="password" placeholder="••••••••" />
+          </div>
+        </div>
+
+        <button type="submit" class="btn-connect" id="connectBtn">
+          <span class="btn-label">Connect</span>
+          <span class="spinner" id="spinner" hidden></span>
+        </button>
       </form>
+    </div>
+
+    <!-- Add key sheet (slides up from bottom) -->
+    <div class="sheet" id="keySheet" role="dialog" aria-modal="true" aria-label="Add SSH Key" hidden>
+      <div class="sheet-handle"></div>
+      <div class="sheet-head">
+        <h2 class="sheet-title">Add SSH Key</h2>
+        <button type="button" class="btn-x" id="closeKeySheet" aria-label="Close">
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
+            <path d="M1.5 1.5l9 9M10.5 1.5l-9 9" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+          </svg>
+        </button>
+      </div>
+      <form id="keyForm" autocomplete="off">
+        <div class="field">
+          <label for="keyName">Key Name</label>
+          <input id="keyName" type="text" placeholder="My Server" />
+        </div>
+        <div class="field">
+          <label for="privateKey">Private Key</label>
+          <textarea id="privateKey" placeholder="-----BEGIN OPENSSH PRIVATE KEY-----&#10;...&#10;-----END OPENSSH PRIVATE KEY-----" rows="7"></textarea>
+        </div>
+        <button type="submit" class="btn-connect">Save Key</button>
+      </form>
+    </div>
+
+    <!-- Top HUD bar (shown when connected) -->
+    <header class="hud" id="hud" hidden>
+      <div class="hud-left">
+        <div class="dot" id="statusDot" aria-hidden="true"></div>
+        <span class="hud-host" id="hudHost"></span>
+      </div>
+      <div class="hud-actions">
+        <button type="button" class="action-btn" data-send="&#x3;" title="Ctrl-C">⌃C</button>
+        <button type="button" class="action-btn" data-send="&#x1b;" title="Escape">Esc</button>
+        <button type="button" class="action-btn" data-send="&#x9;" title="Tab">⇥</button>
+        <button type="button" class="action-btn" id="pasteBtn" title="Paste">Paste</button>
+        <button type="button" class="action-btn action-btn--close" id="disconnectBtn" aria-label="Disconnect">✕</button>
+      </div>
+    </header>
+
+    <!-- Terminal workspace -->
+    <main class="workspace" id="workspace">
+      <div id="terminal" aria-label="Terminal output"></div>
     </main>
+
+    <!-- Mobile control bar (shown when connected) -->
+    <div class="mbar" id="mbar" hidden>
+      <div class="mbar-keys" id="mbarKeys">
+        <button class="mkey" data-send="&#x3;">⌃C</button>
+        <button class="mkey" data-send="&#x1b;">Esc</button>
+        <button class="mkey" data-send="&#x1;">⌃A</button>
+        <button class="mkey" data-send="&#x5;">⌃E</button>
+        <button class="mkey" data-send="&#x9;">Tab</button>
+        <button class="mkey" data-send="&#x1b;[A">↑</button>
+        <button class="mkey" data-send="&#x1b;[B">↓</button>
+        <button class="mkey" data-send="&#x1b;[C">→</button>
+        <button class="mkey" data-send="&#x1b;[D">←</button>
+        <button class="mkey" data-send="&#x7f;">⌫</button>
+      </div>
+      <form class="mbar-cmd" id="cmdForm" autocomplete="off">
+        <input type="text" class="cmd-input" id="cmdInput"
+          placeholder="Type command…"
+          autocapitalize="none" autocorrect="off" autocomplete="off" spellcheck="false" />
+        <button type="submit" class="cmd-send" aria-label="Send">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="22" y1="2" x2="11" y2="13"/>
+            <polygon points="22 2 15 22 11 13 2 9 22 2"/>
+          </svg>
+        </button>
+      </form>
+    </div>
+
     <script type="module" src="/client.js"></script>
   </body>
 </html>
