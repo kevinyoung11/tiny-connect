@@ -10,8 +10,6 @@ import http from 'node:http';
 import { Client } from 'ssh2';
 import { WebSocketServer } from 'ws';
 import { buildConnectionConfig } from './connection-config.js';
-import { createKeyStore } from './key-store.js';
-import { createProfileStore } from './profile-store.js';
 import {
   createSupabaseKeyStore,
   createSupabaseProfileStore,
@@ -27,23 +25,14 @@ const shell = process.env.TERMINAL_SHELL || defaultShell;
 const startupCommand = process.env.STARTUP_COMMAND || '';
 
 const keysDir = process.env.VERCEL ? '/tmp/.keys' : path.join(__dirname, '.keys');
-const profilesDir = process.env.VERCEL ? '/tmp/.profiles' : path.join(__dirname, '.profiles');
 
-let keyStore, profileStore, userStore;
-let scopedStores = false;
-if (isSupabaseConfigured()) {
-  keyStore = createSupabaseKeyStore(keysDir);
-  profileStore = createSupabaseProfileStore();
-  userStore = createSupabaseUserStore();
-  scopedStores = true;
-  // init() is async; errors are non-fatal (falls through to file store on individual ops)
-  Promise.all([keyStore.init(), profileStore.init(), userStore.init()])
-    .then(() => console.log('[supabase] connected and tables ready'))
-    .catch(err => console.error('[supabase] init failed, file store still available:', err.message));
-} else {
-  keyStore = createKeyStore(keysDir);
-  profileStore = createProfileStore(profilesDir);
+if (!isSupabaseConfigured()) {
+  throw new Error('Supabase database is required. Set DIRECT_URL, DATABASE_URL, or Direct_Link.');
 }
+
+const keyStore = createSupabaseKeyStore(keysDir);
+const profileStore = createSupabaseProfileStore();
+const userStore = createSupabaseUserStore();
 
 // sessionId → { client: ssh2.Client, config }
 const sshSessions = new Map();
@@ -122,7 +111,6 @@ app.delete('/api/profiles/:id', async (req, res) => {
 
 app.get('/api/settings', async (req, res) => {
   try {
-    if (!scopedStores) return res.json({ settings: {} });
     const scope = await getRequestScope(req);
     const settings = await userStore.getUserSettings(scope);
     res.json({ settings });
@@ -133,7 +121,6 @@ app.get('/api/settings', async (req, res) => {
 
 app.post('/api/settings', async (req, res) => {
   try {
-    if (!scopedStores) return res.json({ settings: req.body?.settings || {} });
     const scope = await getRequestScope(req);
     const settings = await userStore.saveUserSettings({ ...scope, settings: req.body?.settings || {} });
     res.json({ settings });
@@ -143,8 +130,6 @@ app.post('/api/settings', async (req, res) => {
 });
 
 async function getRequestScope(req) {
-  if (!scopedStores) return {};
-
   const deviceFingerprint = req.get('x-device-fingerprint');
   const user = await userStore.ensureUserForDevice({
     deviceFingerprint,
@@ -392,6 +377,16 @@ function sendExit(ws, exitCode) {
 export default server;
 
 if (!process.env.VERCEL) {
+  startServer().catch((error) => {
+    console.error(`[supabase] startup failed: ${error.message}`);
+    process.exit(1);
+  });
+}
+
+async function startServer() {
+  await Promise.all([keyStore.init(), profileStore.init(), userStore.init()]);
+  console.log('[supabase] connected and tables ready');
+
   server.listen(port, host, () => {
     const nets = os.networkInterfaces();
     const addresses = Object.values(nets)

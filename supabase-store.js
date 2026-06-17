@@ -10,7 +10,7 @@ import { randomBytes, randomUUID, createHash } from 'node:crypto';
 const { Pool } = pg;
 
 let _pool = null;
-let _tablesReady = false;
+const _readyPools = new WeakSet();
 
 function slugify(str, fallback = 'item') {
   return String(str)
@@ -22,11 +22,15 @@ function slugify(str, fallback = 'item') {
 
 function getPool() {
   if (_pool) return _pool;
-  const cs = process.env.DIRECT_URL || process.env.DATABASE_URL;
-  if (!cs) throw new Error('No database URL configured (set DIRECT_URL or DATABASE_URL)');
+  const cs = getDatabaseUrl();
+  if (!cs) throw new Error('No database URL configured (set DIRECT_URL, DATABASE_URL, or Direct_Link)');
   _pool = new Pool({ connectionString: cs, ssl: { rejectUnauthorized: false }, max: 5 });
   _pool.on('error', (err) => console.error('[supabase-store] pool error:', err.message));
   return _pool;
+}
+
+export function getDatabaseUrl() {
+  return process.env.DIRECT_URL || process.env.DATABASE_URL || process.env.Direct_Link || '';
 }
 
 function resolvePool(options = {}) {
@@ -43,6 +47,10 @@ async function initTables(pool = getPool()) {
       updated_at   TIMESTAMPTZ DEFAULT NOW()
     )
   `);
+  await pool.query('ALTER TABLE app_users ADD COLUMN IF NOT EXISTS auth_user_id TEXT');
+  await pool.query("ALTER TABLE app_users ADD COLUMN IF NOT EXISTS display_name TEXT NOT NULL DEFAULT 'Anonymous device'");
+  await pool.query('ALTER TABLE app_users ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW()');
+  await pool.query('ALTER TABLE app_users ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW()');
   await pool.query(`
     CREATE TABLE IF NOT EXISTS user_devices (
       id                 TEXT PRIMARY KEY,
@@ -53,13 +61,21 @@ async function initTables(pool = getPool()) {
       last_seen_at       TIMESTAMPTZ DEFAULT NOW()
     )
   `);
+  await pool.query('ALTER TABLE user_devices ADD COLUMN IF NOT EXISTS user_id TEXT');
+  await pool.query('ALTER TABLE user_devices ADD COLUMN IF NOT EXISTS device_fingerprint TEXT');
+  await pool.query('ALTER TABLE user_devices ADD COLUMN IF NOT EXISTS user_agent TEXT');
+  await pool.query('ALTER TABLE user_devices ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW()');
+  await pool.query('ALTER TABLE user_devices ADD COLUMN IF NOT EXISTS last_seen_at TIMESTAMPTZ DEFAULT NOW()');
   await pool.query(`
-    CREATE TABLE IF NOT EXISTS user_settings (
+    CREATE TABLE IF NOT EXISTS tiny_connect_user_settings (
       user_id    TEXT PRIMARY KEY REFERENCES app_users(id) ON DELETE CASCADE,
       settings   JSONB NOT NULL DEFAULT '{}'::jsonb,
       updated_at TIMESTAMPTZ DEFAULT NOW()
     )
   `);
+  await pool.query('ALTER TABLE tiny_connect_user_settings ADD COLUMN IF NOT EXISTS user_id TEXT');
+  await pool.query("ALTER TABLE tiny_connect_user_settings ADD COLUMN IF NOT EXISTS settings JSONB NOT NULL DEFAULT '{}'::jsonb");
+  await pool.query('ALTER TABLE tiny_connect_user_settings ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW()');
   await pool.query(`
     CREATE TABLE IF NOT EXISTS ssh_keys (
       id          TEXT PRIMARY KEY,
@@ -69,6 +85,10 @@ async function initTables(pool = getPool()) {
       created_at  TIMESTAMPTZ DEFAULT NOW()
     )
   `);
+  await pool.query('ALTER TABLE ssh_keys ADD COLUMN IF NOT EXISTS user_id TEXT');
+  await pool.query('ALTER TABLE ssh_keys ADD COLUMN IF NOT EXISTS name TEXT');
+  await pool.query('ALTER TABLE ssh_keys ADD COLUMN IF NOT EXISTS private_key TEXT');
+  await pool.query('ALTER TABLE ssh_keys ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW()');
   await pool.query(`
     CREATE TABLE IF NOT EXISTS connection_profiles (
       id         TEXT PRIMARY KEY,
@@ -83,16 +103,25 @@ async function initTables(pool = getPool()) {
       created_at TIMESTAMPTZ DEFAULT NOW()
     )
   `);
+  await pool.query('ALTER TABLE connection_profiles ADD COLUMN IF NOT EXISTS user_id TEXT');
+  await pool.query('ALTER TABLE connection_profiles ADD COLUMN IF NOT EXISTS name TEXT');
+  await pool.query('ALTER TABLE connection_profiles ADD COLUMN IF NOT EXISTS host TEXT');
+  await pool.query('ALTER TABLE connection_profiles ADD COLUMN IF NOT EXISTS port INTEGER DEFAULT 22');
+  await pool.query('ALTER TABLE connection_profiles ADD COLUMN IF NOT EXISTS username TEXT');
+  await pool.query('ALTER TABLE connection_profiles ADD COLUMN IF NOT EXISTS key_id TEXT');
   await pool.query("ALTER TABLE connection_profiles ADD COLUMN IF NOT EXISTS passphrase TEXT NOT NULL DEFAULT ''");
   await pool.query('ALTER TABLE connection_profiles ADD COLUMN IF NOT EXISTS tmux BOOLEAN NOT NULL DEFAULT FALSE');
+  await pool.query('ALTER TABLE connection_profiles ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW()');
+  await pool.query('CREATE UNIQUE INDEX IF NOT EXISTS app_users_auth_user_id_unique ON app_users(auth_user_id) WHERE auth_user_id IS NOT NULL');
+  await pool.query('CREATE UNIQUE INDEX IF NOT EXISTS user_devices_device_fingerprint_unique ON user_devices(device_fingerprint)');
   await pool.query('CREATE INDEX IF NOT EXISTS ssh_keys_user_created_idx ON ssh_keys(user_id, created_at ASC)');
   await pool.query('CREATE INDEX IF NOT EXISTS connection_profiles_user_created_idx ON connection_profiles(user_id, created_at ASC)');
 }
 
 async function ensureTables(pool = getPool()) {
-  if (_tablesReady) return;
+  if (_readyPools.has(pool)) return;
   await initTables(pool);
-  _tablesReady = true;
+  _readyPools.add(pool);
 }
 
 function requireUserId(options = {}) {
@@ -147,7 +176,7 @@ export function createSupabaseUserStore(options = {}) {
         [`device_${randomUUID()}`, userId, fingerprintHash, userAgent || null]
       );
       await pool.query(
-        'INSERT INTO user_settings (user_id, settings) VALUES ($1, $2) ON CONFLICT (user_id) DO NOTHING',
+        'INSERT INTO tiny_connect_user_settings (user_id, settings) VALUES ($1, $2) ON CONFLICT (user_id) DO NOTHING',
         [userId, {}]
       );
       return toUser(inserted.rows[0]);
@@ -171,14 +200,14 @@ export function createSupabaseUserStore(options = {}) {
 
     async getUserSettings({ userId }) {
       await ensureTables(pool);
-      const { rows } = await pool.query('SELECT settings FROM user_settings WHERE user_id = $1', [userId]);
+      const { rows } = await pool.query('SELECT settings FROM tiny_connect_user_settings WHERE user_id = $1', [userId]);
       return rows[0]?.settings || {};
     },
 
     async saveUserSettings({ userId, settings }) {
       await ensureTables(pool);
       await pool.query(
-        `INSERT INTO user_settings (user_id, settings)
+        `INSERT INTO tiny_connect_user_settings (user_id, settings)
          VALUES ($1, $2)
          ON CONFLICT (user_id) DO UPDATE SET settings = EXCLUDED.settings, updated_at = NOW()`,
         [userId, settings || {}]
@@ -312,5 +341,5 @@ function toUser(row) {
 }
 
 export function isSupabaseConfigured() {
-  return !!(process.env.DIRECT_URL || process.env.DATABASE_URL);
+  return !!getDatabaseUrl();
 }

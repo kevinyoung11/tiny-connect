@@ -6,7 +6,9 @@ import path from 'node:path';
 import {
   createSupabaseKeyStore,
   createSupabaseProfileStore,
-  createSupabaseUserStore
+  createSupabaseUserStore,
+  getDatabaseUrl,
+  isSupabaseConfigured
 } from '../supabase-store.js';
 
 test('ensures an anonymous user for a device fingerprint', async () => {
@@ -26,6 +28,46 @@ test('ensures an anonymous user for a device fingerprint', async () => {
   assert.match(pool.sql(), /INSERT INTO app_users/);
   assert.match(pool.sql(), /INSERT INTO user_devices/);
 });
+
+test('recognizes the Supabase Direct_Link database env var', () => {
+  const originalDirectUrl = process.env.DIRECT_URL;
+  const originalDatabaseUrl = process.env.DATABASE_URL;
+  const originalDirectLink = process.env.Direct_Link;
+  delete process.env.DIRECT_URL;
+  delete process.env.DATABASE_URL;
+  process.env.Direct_Link = 'postgresql://example/supabase';
+
+  try {
+    assert.equal(getDatabaseUrl(), 'postgresql://example/supabase');
+    assert.equal(isSupabaseConfigured(), true);
+  } finally {
+    restoreEnv('DIRECT_URL', originalDirectUrl);
+    restoreEnv('DATABASE_URL', originalDatabaseUrl);
+    restoreEnv('Direct_Link', originalDirectLink);
+  }
+});
+
+test('initializes Supabase tables with additive migrations for existing tables', async () => {
+  const pool = createMockPool();
+  const store = createSupabaseUserStore({ pool });
+
+  await store.init();
+
+  assert.match(pool.sql(), /ALTER TABLE tiny_connect_user_settings ADD COLUMN IF NOT EXISTS settings JSONB/);
+  assert.match(pool.sql(), /ALTER TABLE connection_profiles ADD COLUMN IF NOT EXISTS passphrase TEXT/);
+  assert.match(pool.sql(), /CREATE UNIQUE INDEX IF NOT EXISTS user_devices_device_fingerprint_unique/);
+});
+
+test('fails fast when a device fingerprint is missing', async () => {
+  const pool = createMockPool();
+  const store = createSupabaseUserStore({ pool });
+
+  await assert.rejects(
+    () => store.ensureUserForDevice({ deviceFingerprint: '', userAgent: 'Node Test' }),
+    /deviceFingerprint is required/
+  );
+});
+
 
 test('scopes Supabase keys to the current user', async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tiny-connect-supabase-keys-'));
@@ -78,7 +120,7 @@ test('scopes Supabase connection profiles and settings to the current user', asy
   assert.deepEqual(settings, { theme: 'dark' });
   assert.match(pool.sql(), /INSERT INTO connection_profiles \(id, user_id, name, host, port, username, key_id, passphrase, tmux\)/);
   assert.match(pool.sql(), /SELECT id, name, host, port, username, key_id, passphrase, tmux FROM connection_profiles WHERE user_id = \$1/);
-  assert.match(pool.sql(), /INSERT INTO user_settings \(user_id, settings\)/);
+  assert.match(pool.sql(), /INSERT INTO tiny_connect_user_settings \(user_id, settings\)/);
 });
 
 function createMockPool(fixtures = {}) {
@@ -92,11 +134,19 @@ function createMockPool(fixtures = {}) {
       if (/SELECT id, name, host, port, username, key_id, passphrase, tmux FROM connection_profiles/.test(sql)) {
         return { rows: fixtures.listProfiles || [] };
       }
-      if (/SELECT settings FROM user_settings/.test(sql)) return { rows: fixtures.getSettings || [] };
+      if (/SELECT settings FROM tiny_connect_user_settings/.test(sql)) return { rows: fixtures.getSettings || [] };
       return { rows: [], rowCount: 1 };
     },
     sql() {
       return calls.map((call) => call.sql).join('\n');
     }
   };
+}
+
+function restoreEnv(name, value) {
+  if (value === undefined) {
+    delete process.env[name];
+  } else {
+    process.env[name] = value;
+  }
 }
