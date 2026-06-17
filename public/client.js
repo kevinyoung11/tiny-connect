@@ -47,8 +47,8 @@ const closeKeySheet     = document.querySelector('#closeKeySheet');
 const keyForm           = document.querySelector('#keyForm');
 const keyNameInput      = document.querySelector('#keyName');
 const privateKeyInput   = document.querySelector('#privateKey');
+const savedPanel        = document.querySelector('#savedPanel');
 const profileSelect     = document.querySelector('#profileSelect');
-const saveProfileBtn    = document.querySelector('#saveProfileBtn');
 const deleteProfileBtn  = document.querySelector('#deleteProfileBtn');
 const profileSavePanel  = document.querySelector('#profileSavePanel');
 const profileNameInput  = document.querySelector('#profileNameInput');
@@ -155,7 +155,8 @@ function renderModeTabs() {
     t.classList.toggle('active', active);
     t.setAttribute('aria-selected', active ? 'true' : 'false');
   });
-  sshFields.hidden = currentMode !== 'ssh';
+  sshFields.hidden = currentMode === 'saved';
+  if (savedPanel) savedPanel.hidden = currentMode !== 'saved';
 }
 
 /* ─── Connect ────────────────────────────────────────────────────────────── */
@@ -206,7 +207,6 @@ function onSessionDisconnect(sess, reason) {
 
 function buildConfig() {
   const tmux = useTmuxInput?.checked ?? false;
-  if (currentMode === 'local') return { mode: 'local', tmux };
   return {
     mode:       'ssh',
     host:       hostInput.value.trim(),
@@ -384,13 +384,11 @@ function renderProfileSelect() {
   if (!profileSelect) return;
   renderProfileOptions(profileSelect, profilesCache);
   if (deleteProfileBtn) deleteProfileBtn.hidden = true;
-  hideSavePanel();
 }
 
 profileSelect?.addEventListener('change', () => {
   const profile = profilesCache.find(p => p.id === profileSelect.value);
   if (deleteProfileBtn) deleteProfileBtn.hidden = !profile;
-  hideSavePanel();
   if (!profile) return;
   currentMode = 'ssh';
   renderModeTabs();
@@ -405,30 +403,17 @@ profileSelect?.addEventListener('change', () => {
 });
 
 /* ─── Inline profile save panel ──────────────────────────────────────────── */
-function showSavePanel() {
-  if (currentMode !== 'ssh') { toast('Profiles are for SSH connections', 'err'); return; }
-  // Pre-fill a sensible name from current form values
-  const suggested = [usernameInput.value.trim(), hostInput.value.trim()]
+profileNameInput?.addEventListener('focus', () => {
+  if (profileNameInput.value.trim()) return;
+  profileNameInput.value = [usernameInput.value.trim(), hostInput.value.trim()]
     .filter(Boolean).join('@') || '';
-  profileNameInput.value = suggested;
-  profileSavePanel.removeAttribute('hidden');
-  profileNameInput.focus();
   profileNameInput.select();
-}
-
-function hideSavePanel() {
-  profileSavePanel.setAttribute('hidden', '');
-  profileNameInput.value = '';
-}
-
-saveProfileBtn?.addEventListener('click', () => {
-  if (profileSavePanel.hidden) showSavePanel(); else hideSavePanel();
 });
 
-profileSaveCancel?.addEventListener('click', hideSavePanel);
+profileSaveCancel?.addEventListener('click', () => { profileNameInput.value = ''; });
 
 profileNameInput?.addEventListener('keydown', e => {
-  if (e.key === 'Escape') hideSavePanel();
+  if (e.key === 'Escape') profileNameInput.value = '';
 });
 
 async function doSaveProfile() {
@@ -457,6 +442,7 @@ async function doSaveProfile() {
       profileSelect.value = body.profile.id;
       if (deleteProfileBtn) deleteProfileBtn.hidden = false;
     }
+    profileNameInput.value = '';
     toast(`Saved "${name}"`, 'ok');
   } catch (err) {
     toast(err.message, 'err');

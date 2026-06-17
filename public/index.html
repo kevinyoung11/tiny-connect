@@ -33,16 +33,16 @@
       </div>
 
       <form id="connectForm" autocomplete="off" novalidate>
-        <!-- Saved profiles -->
-        <div class="profile-row">
-          <select id="profileSelect"></select>
-          <button type="button" class="btn-icon" id="saveProfileBtn" title="Save as profile">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
-              <polyline points="17 21 17 13 7 13 7 21"/>
-              <polyline points="7 3 7 8 15 8"/>
-            </svg>
-          </button>
+        <div class="mode-tabs" role="tablist">
+          <button type="button" class="tab active" data-mode="ssh" role="tab" aria-selected="true">SSH</button>
+          <button type="button" class="tab" data-mode="saved" role="tab" aria-selected="false">Saved</button>
+        </div>
+
+        <div class="saved-panel" id="savedPanel" hidden>
+          <div class="field" style="flex:1">
+            <label for="profileSelect">Saved Connections</label>
+            <select id="profileSelect"></select>
+          </div>
           <button type="button" class="btn-icon btn-icon--danger" id="deleteProfileBtn" title="Delete profile" hidden>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
               <polyline points="3 6 5 6 21 6"/>
@@ -51,10 +51,6 @@
               <path d="M9 6V4h6v2"/>
             </svg>
           </button>
-        </div>
-        <div class="mode-tabs" role="tablist">
-          <button type="button" class="tab active" data-mode="ssh" role="tab" aria-selected="true">SSH</button>
-          <button type="button" class="tab" data-mode="local" role="tab" aria-selected="false">Local</button>
         </div>
 
         <div id="sshFields">
@@ -93,8 +89,7 @@
             <label for="passphrase">Passphrase <span class="label-opt">optional</span></label>
             <input id="passphrase" type="password" placeholder="••••••••" />
           </div>
-          <!-- Inline profile save panel (replaces prompt()) -->
-          <div class="profile-save-panel" id="profileSavePanel" hidden>
+          <div class="profile-save-panel" id="profileSavePanel">
             <input id="profileNameInput" type="text" placeholder="Profile name, e.g. My Server" autocapitalize="words" autocorrect="off" />
             <button type="button" class="btn-save-confirm" id="profileSaveConfirm">Save</button>
             <button type="button" class="btn-save-cancel" id="profileSaveCancel">✕</button>

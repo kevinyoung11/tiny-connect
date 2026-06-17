@@ -12,6 +12,15 @@ test('connection modal places profile selection above profile saving', () => {
   assert.ok(html.indexOf('id="profileSelect"') < html.indexOf('id="profileSavePanel"'));
 });
 
+test('connection modal uses Saved tab instead of top profile action buttons', () => {
+  const html = readFileSync(resolve('public/index.html'), 'utf8');
+
+  assert.ok(html.includes('data-mode="saved"'));
+  assert.ok(!html.includes('data-mode="local"'));
+  assert.ok(!html.includes('id="saveProfileBtn"'));
+  assert.ok(html.indexOf('id="deleteProfileBtn"') > html.indexOf('id="profileSelect"'));
+});
+
 test('renders saved profiles with a placeholder and host context', () => {
   const select = createSelect();
 
