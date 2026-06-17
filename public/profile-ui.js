@@ -24,8 +24,16 @@ export function applyProfileToConnectionForm(profile, fields) {
 
   const keyId = profile.keyId || profile.key_id;
   fields.keyIdInput.value = keyId || '';
+  fields.passphraseInput.value = profile.passphrase || '';
+  fields.useTmuxInput.checked = Boolean(profile.tmux);
 
-  flashFields([fields.hostInput, fields.portInput, fields.usernameInput, fields.keyIdInput]);
+  flashFields([
+    fields.hostInput,
+    fields.portInput,
+    fields.usernameInput,
+    fields.keyIdInput,
+    fields.passphraseInput
+  ]);
   return true;
 }
 

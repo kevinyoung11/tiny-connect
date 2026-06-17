@@ -52,13 +52,6 @@
             </svg>
           </button>
         </div>
-        <!-- Inline profile save panel (replaces prompt()) -->
-        <div class="profile-save-panel" id="profileSavePanel" hidden>
-          <input id="profileNameInput" type="text" placeholder="Profile name, e.g. My Server" autocapitalize="words" autocorrect="off" />
-          <button type="button" class="btn-save-confirm" id="profileSaveConfirm">Save</button>
-          <button type="button" class="btn-save-cancel" id="profileSaveCancel">✕</button>
-        </div>
-
         <div class="mode-tabs" role="tablist">
           <button type="button" class="tab active" data-mode="ssh" role="tab" aria-selected="true">SSH</button>
           <button type="button" class="tab" data-mode="local" role="tab" aria-selected="false">Local</button>
@@ -99,6 +92,12 @@
           <div class="field">
             <label for="passphrase">Passphrase <span class="label-opt">optional</span></label>
             <input id="passphrase" type="password" placeholder="••••••••" />
+          </div>
+          <!-- Inline profile save panel (replaces prompt()) -->
+          <div class="profile-save-panel" id="profileSavePanel" hidden>
+            <input id="profileNameInput" type="text" placeholder="Profile name, e.g. My Server" autocapitalize="words" autocorrect="off" />
+            <button type="button" class="btn-save-confirm" id="profileSaveConfirm">Save</button>
+            <button type="button" class="btn-save-cancel" id="profileSaveCancel">✕</button>
           </div>
           <div class="field field--toggle">
             <label for="useTmux">Use tmux <span class="label-opt">session persistence</span></label>

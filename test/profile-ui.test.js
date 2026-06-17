@@ -31,11 +31,13 @@ test('applies a selected profile to the connection form', () => {
     hostInput: createInput(),
     portInput: createInput(),
     usernameInput: createInput(),
-    keyIdInput: createInput()
+    keyIdInput: createInput(),
+    passphraseInput: createInput(),
+    useTmuxInput: createCheckbox()
   };
 
   const applied = applyProfileToConnectionForm(
-    { host: 'db.example.com', port: 2202, username: 'root', keyId: 'key_prod' },
+    { host: 'db.example.com', port: 2202, username: 'root', keyId: 'key_prod', passphrase: 'secret', tmux: true },
     fields
   );
 
@@ -44,6 +46,8 @@ test('applies a selected profile to the connection form', () => {
   assert.equal(fields.portInput.value, '2202');
   assert.equal(fields.usernameInput.value, 'root');
   assert.equal(fields.keyIdInput.value, 'key_prod');
+  assert.equal(fields.passphraseInput.value, 'secret');
+  assert.equal(fields.useTmuxInput.checked, true);
 });
 
 function createSelect() {
@@ -59,6 +63,16 @@ function createSelect() {
 function createInput() {
   return {
     value: '',
+    classList: {
+      add() {},
+      remove() {}
+    }
+  };
+}
+
+function createCheckbox() {
+  return {
+    checked: false,
     classList: {
       add() {},
       remove() {}

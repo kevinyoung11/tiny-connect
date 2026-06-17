@@ -399,6 +399,8 @@ profileSelect?.addEventListener('change', () => {
     portInput,
     usernameInput,
     keyIdInput,
+    passphraseInput,
+    useTmuxInput,
   });
 });
 
@@ -444,6 +446,8 @@ async function doSaveProfile() {
         port:     portInput.value || '22',
         username: usernameInput.value.trim(),
         keyId:    keyIdInput.value,
+        passphrase: passphraseInput.value,
+        tmux: useTmuxInput?.checked ?? false,
       }),
     }));
     const body = await res.json();

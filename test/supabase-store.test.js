@@ -51,7 +51,7 @@ test('scopes Supabase keys to the current user', async () => {
 test('scopes Supabase connection profiles and settings to the current user', async () => {
   const pool = createMockPool({
     listProfiles: [
-      { id: 'profile_1', name: 'prod', host: 'prod.example.com', port: 22, username: 'root', key_id: 'key_1' }
+      { id: 'profile_1', name: 'prod', host: 'prod.example.com', port: 22, username: 'root', key_id: 'key_1', passphrase: 'secret', tmux: true }
     ],
     getSettings: [{ settings: { theme: 'dark' } }]
   });
@@ -64,16 +64,20 @@ test('scopes Supabase connection profiles and settings to the current user', asy
     host: 'prod.example.com',
     port: 22,
     username: 'root',
-    keyId: 'key_1'
+    keyId: 'key_1',
+    passphrase: 'secret',
+    tmux: true
   });
   const profiles = await profileStore.listProfiles({ userId: 'user_1' });
   const settings = await userStore.getUserSettings({ userId: 'user_1' });
   await userStore.saveUserSettings({ userId: 'user_1', settings: { theme: 'light' } });
 
   assert.equal(profiles[0].keyId, 'key_1');
+  assert.equal(profiles[0].passphrase, 'secret');
+  assert.equal(profiles[0].tmux, true);
   assert.deepEqual(settings, { theme: 'dark' });
-  assert.match(pool.sql(), /INSERT INTO connection_profiles \(id, user_id, name, host, port, username, key_id\)/);
-  assert.match(pool.sql(), /SELECT id, name, host, port, username, key_id FROM connection_profiles WHERE user_id = \$1/);
+  assert.match(pool.sql(), /INSERT INTO connection_profiles \(id, user_id, name, host, port, username, key_id, passphrase, tmux\)/);
+  assert.match(pool.sql(), /SELECT id, name, host, port, username, key_id, passphrase, tmux FROM connection_profiles WHERE user_id = \$1/);
   assert.match(pool.sql(), /INSERT INTO user_settings \(user_id, settings\)/);
 });
 
@@ -85,7 +89,7 @@ function createMockPool(fixtures = {}) {
       if (/FROM user_devices/.test(sql)) return { rows: fixtures.selectUserByFingerprint || [] };
       if (/INSERT INTO app_users/.test(sql)) return { rows: fixtures.insertUser || [{ id: 'user_1', display_name: 'Anonymous device' }] };
       if (/SELECT id, name FROM ssh_keys/.test(sql)) return { rows: fixtures.listKeys || [] };
-      if (/SELECT id, name, host, port, username, key_id FROM connection_profiles/.test(sql)) {
+      if (/SELECT id, name, host, port, username, key_id, passphrase, tmux FROM connection_profiles/.test(sql)) {
         return { rows: fixtures.listProfiles || [] };
       }
       if (/SELECT settings FROM user_settings/.test(sql)) return { rows: fixtures.getSettings || [] };

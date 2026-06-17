@@ -78,9 +78,13 @@ async function initTables(pool = getPool()) {
       port       INTEGER DEFAULT 22,
       username   TEXT NOT NULL,
       key_id     TEXT,
+      passphrase TEXT NOT NULL DEFAULT '',
+      tmux       BOOLEAN NOT NULL DEFAULT FALSE,
       created_at TIMESTAMPTZ DEFAULT NOW()
     )
   `);
+  await pool.query("ALTER TABLE connection_profiles ADD COLUMN IF NOT EXISTS passphrase TEXT NOT NULL DEFAULT ''");
+  await pool.query('ALTER TABLE connection_profiles ADD COLUMN IF NOT EXISTS tmux BOOLEAN NOT NULL DEFAULT FALSE');
   await pool.query('CREATE INDEX IF NOT EXISTS ssh_keys_user_created_idx ON ssh_keys(user_id, created_at ASC)');
   await pool.query('CREATE INDEX IF NOT EXISTS connection_profiles_user_created_idx ON connection_profiles(user_id, created_at ASC)');
 }
@@ -261,13 +265,13 @@ export function createSupabaseProfileStore(options = {}) {
       const userId = requireUserId(options);
       await ensureTables(pool);
       const { rows } = await pool.query(
-        'SELECT id, name, host, port, username, key_id FROM connection_profiles WHERE user_id = $1 ORDER BY created_at ASC',
+        'SELECT id, name, host, port, username, key_id, passphrase, tmux FROM connection_profiles WHERE user_id = $1 ORDER BY created_at ASC',
         [userId]
       );
       return rows.map(r => ({ ...r, keyId: r.key_id }));
     },
 
-    async createProfile({ userId, name, host, port, username, keyId }) {
+    async createProfile({ userId, name, host, port, username, keyId, passphrase, tmux }) {
       if (!name?.trim()) throw new Error('Profile name is required');
       if (!host?.trim()) throw new Error('Host is required');
       if (!username?.trim()) throw new Error('Username is required');
@@ -275,10 +279,19 @@ export function createSupabaseProfileStore(options = {}) {
       const id = `${slugify(name, 'profile')}-${randomBytes(4).toString('hex')}`;
       await ensureTables(pool);
       await pool.query(
-        'INSERT INTO connection_profiles (id, user_id, name, host, port, username, key_id) VALUES ($1, $2, $3, $4, $5, $6, $7)',
-        [id, ownerId, name.trim(), host.trim(), Number(port) || 22, username.trim(), keyId || null]
+        'INSERT INTO connection_profiles (id, user_id, name, host, port, username, key_id, passphrase, tmux) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)',
+        [id, ownerId, name.trim(), host.trim(), Number(port) || 22, username.trim(), keyId || null, String(passphrase || ''), Boolean(tmux)]
       );
-      return { id, name: name.trim(), host: host.trim(), port: Number(port) || 22, username: username.trim(), keyId: keyId || null };
+      return {
+        id,
+        name: name.trim(),
+        host: host.trim(),
+        port: Number(port) || 22,
+        username: username.trim(),
+        keyId: keyId || null,
+        passphrase: String(passphrase || ''),
+        tmux: Boolean(tmux)
+      };
     },
 
     async deleteProfile(id, options = {}) {

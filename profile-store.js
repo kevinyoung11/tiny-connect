@@ -21,7 +21,7 @@ export function createProfileStore(directory) {
       return read();
     },
 
-    createProfile({ name, host, port, username, keyId }) {
+    createProfile({ name, host, port, username, keyId, passphrase, tmux }) {
       const cleanName = requiredString(name, 'name');
       const id = slugify(cleanName) + '-' + crypto.randomBytes(4).toString('hex');
       const profile = {
@@ -31,6 +31,8 @@ export function createProfileStore(directory) {
         port: String(port || '22'),
         username: String(username || ''),
         keyId: String(keyId || ''),
+        passphrase: String(passphrase || ''),
+        tmux: Boolean(tmux),
       };
       const profiles = read();
       profiles.push(profile);
