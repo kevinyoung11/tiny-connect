@@ -1,5 +1,7 @@
 import { Terminal } from 'https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0/+esm';
 import { FitAddon } from 'https://cdn.jsdelivr.net/npm/@xterm/addon-fit@0.10.0/+esm';
+import { withDeviceIdentity } from './identity.js';
+import { applyProfileToConnectionForm, renderProfileOptions } from './profile-ui.js';
 
 /* ─── Terminal theme ─────────────────────────────────────────────────────── */
 const TERM_OPTS = {
@@ -331,11 +333,11 @@ keyForm.addEventListener('submit', async e => {
   const orig = btn.textContent;
   btn.textContent = 'Saving…';
   try {
-    const res = await fetch('/api/keys', {
+    const res = await fetch('/api/keys', withDeviceIdentity({
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name: keyNameInput.value, privateKey: privateKeyInput.value }),
-    });
+    }));
     const body = await res.json();
     if (!res.ok) throw new Error(body.error || 'Save failed');
     keyNameInput.value = '';
@@ -358,7 +360,7 @@ deleteKeyBtn?.addEventListener('click', async () => {
   const key = keysCache.find(k => k.id === id);
   if (!confirm(`Delete key "${key?.name || id}"?`)) return;
   try {
-    const res = await fetch(`/api/keys/${encodeURIComponent(id)}`, { method: 'DELETE' });
+    const res = await fetch(`/api/keys/${encodeURIComponent(id)}`, withDeviceIdentity({ method: 'DELETE' }));
     const body = await res.json();
     if (!res.ok) throw new Error(body.error || 'Delete failed');
     await loadKeys();
@@ -371,7 +373,7 @@ deleteKeyBtn?.addEventListener('click', async () => {
 /* ─── Profile management ─────────────────────────────────────────────────── */
 async function loadProfiles() {
   try {
-    const res = await fetch('/api/profiles');
+    const res = await fetch('/api/profiles', withDeviceIdentity());
     const body = await res.json();
     profilesCache = body.profiles || [];
     renderProfileSelect();
@@ -380,19 +382,7 @@ async function loadProfiles() {
 
 function renderProfileSelect() {
   if (!profileSelect) return;
-  profileSelect.innerHTML = '';
-  const ph = document.createElement('option');
-  ph.value = '';
-  ph.textContent = profilesCache.length ? '— Saved connections —' : '— No saved connections —';
-  profileSelect.append(ph);
-  for (const p of profilesCache) {
-    const opt = document.createElement('option');
-    opt.value = p.id;
-    // Show name + host so user sees where it connects at a glance
-    const host = p.host ? ` · ${p.username ? p.username + '@' : ''}${p.host}` : '';
-    opt.textContent = p.name + host;
-    profileSelect.append(opt);
-  }
+  renderProfileOptions(profileSelect, profilesCache);
   if (deleteProfileBtn) deleteProfileBtn.hidden = true;
   hideSavePanel();
 }
@@ -404,15 +394,11 @@ profileSelect?.addEventListener('change', () => {
   if (!profile) return;
   currentMode = 'ssh';
   renderModeTabs();
-  hostInput.value     = profile.host || '';
-  portInput.value     = profile.port || '22';
-  usernameInput.value = profile.username || '';
-  const keyId = profile.keyId || profile.key_id;
-  if (keyId) keyIdInput.value = keyId;
-  // Briefly highlight the filled fields
-  [hostInput, portInput, usernameInput].forEach(el => {
-    el.classList.add('field-flash');
-    setTimeout(() => el.classList.remove('field-flash'), 600);
+  applyProfileToConnectionForm(profile, {
+    hostInput,
+    portInput,
+    usernameInput,
+    keyIdInput,
   });
 });
 
@@ -449,7 +435,7 @@ async function doSaveProfile() {
   profileSaveConfirm.disabled = true;
   profileSaveConfirm.textContent = '…';
   try {
-    const res = await fetch('/api/profiles', {
+    const res = await fetch('/api/profiles', withDeviceIdentity({
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -459,7 +445,7 @@ async function doSaveProfile() {
         username: usernameInput.value.trim(),
         keyId:    keyIdInput.value,
       }),
-    });
+    }));
     const body = await res.json();
     if (!res.ok) throw new Error(body.error || 'Save failed');
     await loadProfiles();
@@ -487,7 +473,7 @@ deleteProfileBtn?.addEventListener('click', async () => {
   const profile = profilesCache.find(p => p.id === id);
   if (!confirm(`Delete profile "${profile?.name || id}"?`)) return;
   try {
-    const res = await fetch(`/api/profiles/${encodeURIComponent(id)}`, { method: 'DELETE' });
+    const res = await fetch(`/api/profiles/${encodeURIComponent(id)}`, withDeviceIdentity({ method: 'DELETE' }));
     const body = await res.json();
     if (!res.ok) throw new Error(body.error || 'Delete failed');
     await loadProfiles();
@@ -609,7 +595,7 @@ sftpFileInput?.addEventListener('change', async () => {
 /* ─── API helpers ────────────────────────────────────────────────────────── */
 async function loadKeys(selectedId = '') {
   try {
-    const res  = await fetch('/api/keys');
+    const res  = await fetch('/api/keys', withDeviceIdentity());
     const body = await res.json();
     keysCache = body.keys || [];
     keyIdInput.innerHTML = '';

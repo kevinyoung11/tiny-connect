@@ -24,7 +24,8 @@ test('builds ssh config with default port and expanded private key path', () => 
     port: 22,
     username: 'deploy',
     privateKeyPath: path.join(os.homedir(), '.ssh/id_ed25519'),
-    passphrase: ''
+    passphrase: '',
+    tmux: false
   });
 });
 

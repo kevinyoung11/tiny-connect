@@ -12,7 +12,12 @@ import { WebSocketServer } from 'ws';
 import { buildConnectionConfig } from './connection-config.js';
 import { createKeyStore } from './key-store.js';
 import { createProfileStore } from './profile-store.js';
-import { createSupabaseKeyStore, createSupabaseProfileStore, isSupabaseConfigured } from './supabase-store.js';
+import {
+  createSupabaseKeyStore,
+  createSupabaseProfileStore,
+  createSupabaseUserStore,
+  isSupabaseConfigured
+} from './supabase-store.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const port = Number(process.env.PORT || 8787);
@@ -24,12 +29,15 @@ const startupCommand = process.env.STARTUP_COMMAND || '';
 const keysDir = process.env.VERCEL ? '/tmp/.keys' : path.join(__dirname, '.keys');
 const profilesDir = process.env.VERCEL ? '/tmp/.profiles' : path.join(__dirname, '.profiles');
 
-let keyStore, profileStore;
+let keyStore, profileStore, userStore;
+let scopedStores = false;
 if (isSupabaseConfigured()) {
   keyStore = createSupabaseKeyStore(keysDir);
   profileStore = createSupabaseProfileStore();
+  userStore = createSupabaseUserStore();
+  scopedStores = true;
   // init() is async; errors are non-fatal (falls through to file store on individual ops)
-  Promise.all([keyStore.init(), profileStore.init()])
+  Promise.all([keyStore.init(), profileStore.init(), userStore.init()])
     .then(() => console.log('[supabase] connected and tables ready'))
     .catch(err => console.error('[supabase] init failed, file store still available:', err.message));
 } else {
@@ -49,7 +57,8 @@ app.use('/xterm-fit', express.static(path.join(__dirname, 'node_modules', '@xter
 /* ── SSH Key endpoints ─────────────────────────────────────────────────────── */
 app.get('/api/keys', async (req, res) => {
   try {
-    const keys = await Promise.resolve(keyStore.listKeys());
+    const scope = await getRequestScope(req);
+    const keys = await Promise.resolve(keyStore.listKeys(scope));
     res.json({ keys });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -58,7 +67,12 @@ app.get('/api/keys', async (req, res) => {
 
 app.post('/api/keys', async (req, res) => {
   try {
-    const key = await Promise.resolve(keyStore.createKey({ name: req.body?.name, privateKey: req.body?.privateKey }));
+    const scope = await getRequestScope(req);
+    const key = await Promise.resolve(keyStore.createKey({
+      ...scope,
+      name: req.body?.name,
+      privateKey: req.body?.privateKey
+    }));
     res.status(201).json({ key: { id: key.id, name: key.name } });
   } catch (error) {
     res.status(400).json({ error: error.message });
@@ -67,7 +81,8 @@ app.post('/api/keys', async (req, res) => {
 
 app.delete('/api/keys/:id', async (req, res) => {
   try {
-    await Promise.resolve(keyStore.deleteKey?.(req.params.id));
+    const scope = await getRequestScope(req);
+    await Promise.resolve(keyStore.deleteKey?.(req.params.id, scope));
     res.json({ ok: true });
   } catch (error) {
     res.status(404).json({ error: error.message });
@@ -77,7 +92,8 @@ app.delete('/api/keys/:id', async (req, res) => {
 /* ── Profile endpoints ─────────────────────────────────────────────────────── */
 app.get('/api/profiles', async (req, res) => {
   try {
-    const profiles = await Promise.resolve(profileStore.listProfiles());
+    const scope = await getRequestScope(req);
+    const profiles = await Promise.resolve(profileStore.listProfiles(scope));
     res.json({ profiles });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -86,7 +102,8 @@ app.get('/api/profiles', async (req, res) => {
 
 app.post('/api/profiles', async (req, res) => {
   try {
-    const profile = await Promise.resolve(profileStore.createProfile(req.body || {}));
+    const scope = await getRequestScope(req);
+    const profile = await Promise.resolve(profileStore.createProfile({ ...scope, ...(req.body || {}) }));
     res.status(201).json({ profile });
   } catch (error) {
     res.status(400).json({ error: error.message });
@@ -95,12 +112,46 @@ app.post('/api/profiles', async (req, res) => {
 
 app.delete('/api/profiles/:id', async (req, res) => {
   try {
-    await Promise.resolve(profileStore.deleteProfile(req.params.id));
+    const scope = await getRequestScope(req);
+    await Promise.resolve(profileStore.deleteProfile(req.params.id, scope));
     res.json({ ok: true });
   } catch (error) {
     res.status(404).json({ error: error.message });
   }
 });
+
+app.get('/api/settings', async (req, res) => {
+  try {
+    if (!scopedStores) return res.json({ settings: {} });
+    const scope = await getRequestScope(req);
+    const settings = await userStore.getUserSettings(scope);
+    res.json({ settings });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/settings', async (req, res) => {
+  try {
+    if (!scopedStores) return res.json({ settings: req.body?.settings || {} });
+    const scope = await getRequestScope(req);
+    const settings = await userStore.saveUserSettings({ ...scope, settings: req.body?.settings || {} });
+    res.json({ settings });
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+async function getRequestScope(req) {
+  if (!scopedStores) return {};
+
+  const deviceFingerprint = req.get('x-device-fingerprint');
+  const user = await userStore.ensureUserForDevice({
+    deviceFingerprint,
+    userAgent: req.get('user-agent') || ''
+  });
+  return { userId: user.id };
+}
 
 /* ── SFTP endpoints ────────────────────────────────────────────────────────── */
 app.get('/api/sftp/:id/ls', (req, res) => {
