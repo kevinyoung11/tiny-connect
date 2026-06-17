@@ -1,7 +1,7 @@
-import { Terminal } from '/xterm/lib/xterm.js';
-import { FitAddon } from '/xterm-fit/lib/addon-fit.js';
+import { Terminal } from 'https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0/+esm';
+import { FitAddon } from 'https://cdn.jsdelivr.net/npm/@xterm/addon-fit@0.10.0/+esm';
 
-/* ─── DOM refs ──────────────────────────────────────────────────────────── */
+/* ─── DOM refs ────────────────────────────────────────────────────────────────────────────────── */
 const backdrop     = document.querySelector('#backdrop');
 const connectModal = document.querySelector('#connectModal');
 const connectForm  = document.querySelector('#connectForm');
@@ -30,7 +30,7 @@ const cmdForm      = document.querySelector('#cmdForm');
 const cmdInput     = document.querySelector('#cmdInput');
 const pasteBtn     = document.querySelector('#pasteBtn');
 
-/* ─── Terminal ──────────────────────────────────────────────────────────── */
+/* ─── Terminal ────────────────────────────────────────────────────────────────────────────── */
 const term = new Terminal({
   cursorBlink: true,
   convertEol: true,
@@ -69,16 +69,16 @@ term.loadAddon(fitAddon);
 term.open(terminalEl);
 fitAddon.fit();
 
-/* ─── State ─────────────────────────────────────────────────────────────── */
+/* ─── State ───────────────────────────────────────────────────────────────────────────────────── */
 let ws          = null;
 let currentMode = 'ssh';
 
-/* ─── Init ──────────────────────────────────────────────────────────────── */
+/* ─── Init ────────────────────────────────────────────────────────────────────────────────────── */
 openModal();
 loadKeys();
 renderModeTabs();
 
-/* ─── Mode tabs ─────────────────────────────────────────────────────────── */
+/* ─── Mode tabs ────────────────────────────────────────────────────────────────────────────── */
 document.querySelectorAll('.tab').forEach(tab => {
   tab.addEventListener('click', () => {
     currentMode = tab.dataset.mode;
@@ -95,7 +95,7 @@ function renderModeTabs() {
   sshFields.hidden = currentMode !== 'ssh';
 }
 
-/* ─── Connect ───────────────────────────────────────────────────────────── */
+/* ─── Connect ────────────────────────────────────────────────────────────────────────────── */
 connectForm.addEventListener('submit', e => {
   e.preventDefault();
   doConnect();
@@ -158,10 +158,10 @@ function buildConfig() {
   };
 }
 
-/* ─── Disconnect ────────────────────────────────────────────────────────── */
+/* ─── Disconnect ──────────────────────────────────────────────────────────────────────────── */
 disconnectBtn.addEventListener('click', () => ws?.close());
 
-/* ─── Add key sheet ─────────────────────────────────────────────────────── */
+/* ─── Add key sheet ───────────────────────────────────────────────────────────────────────── */
 addKeyBtn.addEventListener('click', openKeySheet);
 closeKeySheet.addEventListener('click', closeSheet);
 
@@ -194,10 +194,10 @@ keyForm.addEventListener('submit', async e => {
   }
 });
 
-/* ─── Terminal → server ─────────────────────────────────────────────────── */
+/* ─── Terminal → server ──────────────────────────────────────────────────────────────────────── */
 term.onData(data => send({ type: 'input', data }));
 
-/* ─── [data-send] buttons ───────────────────────────────────────────────── */
+/* ─── [data-send] buttons ─────────────────────────────────────────────────────────────────────── */
 document.querySelectorAll('[data-send]').forEach(btn => {
   btn.addEventListener('click', () => {
     send({ type: 'input', data: btn.dataset.send });
@@ -205,14 +205,14 @@ document.querySelectorAll('[data-send]').forEach(btn => {
   });
 });
 
-/* ─── Paste ─────────────────────────────────────────────────────────────── */
+/* ─── Paste ───────────────────────────────────────────────────────────────────────────────────── */
 pasteBtn?.addEventListener('click', async () => {
   const text = await navigator.clipboard.readText().catch(() => '');
   if (text) send({ type: 'input', data: text });
   term.focus();
 });
 
-/* ─── Command bar ───────────────────────────────────────────────────────── */
+/* ─── Command bar ───────────────────────────────────────────────────────────────────────────── */
 cmdForm.addEventListener('submit', e => {
   e.preventDefault();
   const val = cmdInput.value;
@@ -222,7 +222,7 @@ cmdForm.addEventListener('submit', e => {
   term.focus();
 });
 
-/* ─── Resize ────────────────────────────────────────────────────────────── */
+/* ─── Resize ──────────────────────────────────────────────────────────────────────────────────── */
 window.addEventListener('resize', () => requestAnimationFrame(fit));
 window.visualViewport?.addEventListener('resize', () => requestAnimationFrame(fit));
 
@@ -231,7 +231,7 @@ function fit() {
   send({ type: 'resize', cols: term.cols, rows: term.rows });
 }
 
-/* ─── API helpers ───────────────────────────────────────────────────────── */
+/* ─── API helpers ────────────────────────────────────────────────────────────────────────────── */
 function send(msg) {
   if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify(msg));
 }
@@ -257,7 +257,7 @@ async function loadKeys(selectedId = '') {
   } catch (_) {}
 }
 
-/* ─── UI state helpers ──────────────────────────────────────────────────── */
+/* ─── UI state helpers ─────────────────────────────────────────────────────────────────────────── */
 function openModal() {
   backdrop.classList.add('open');
   connectModal.removeAttribute('hidden');
@@ -311,7 +311,7 @@ function setConnecting(on) {
   spinner.hidden  = !on;
 }
 
-/* ─── Toast ─────────────────────────────────────────────────────────────── */
+/* ─── Toast ──────────────────────────────────────────────────────────────────────────────────── */
 let toastEl, toastTimer;
 function toast(msg, type = '') {
   if (!toastEl) {
