@@ -1,7 +1,9 @@
 /**
- * Supabase/PostgreSQL-backed stores for users, SSH keys, profiles, and settings.
- * Requires DATABASE_URL or DIRECT_URL env var pointing to a Postgres connection string.
+ * Supabase-backed stores using @supabase/supabase-js for all CRUD.
+ * Requires SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY env vars.
+ * Optionally uses Direct_Link / DIRECT_URL / DATABASE_URL for DDL (table creation).
  */
+import { createClient } from '@supabase/supabase-js';
 import pg from 'pg';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -9,48 +11,47 @@ import { randomBytes, randomUUID, createHash } from 'node:crypto';
 
 const { Pool } = pg;
 
-let _pool = null;
-const _readyPools = new WeakSet();
+/* ── Supabase JS client ─────────────────────────────────────────────────── */
 
-function slugify(str, fallback = 'item') {
-  return String(str)
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-|-$/g, '')
-    .slice(0, 40) || fallback;
+let _sb = null;
+function sb() {
+  if (_sb) return _sb;
+  const url = process.env.SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !key) throw new Error('SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required');
+  _sb = createClient(url, key, { auth: { persistSession: false } });
+  return _sb;
 }
 
-function getPool() {
+/* ── pg pool (DDL only) ─────────────────────────────────────────────────── */
+
+let _pool = null;
+function getPgPool() {
   if (_pool) return _pool;
-  const cs = getDatabaseUrl();
-  if (!cs) throw new Error('No database URL configured (set DIRECT_URL, DATABASE_URL, or Direct_Link)');
-  _pool = new Pool({ connectionString: cs, ssl: { rejectUnauthorized: false }, max: 5 });
-  _pool.on('error', (err) => console.error('[supabase-store] pool error:', err.message));
+  const cs = process.env.Direct_Link || process.env.DIRECT_URL || process.env.DATABASE_URL;
+  if (!cs) return null;
+  _pool = new Pool({ connectionString: cs, ssl: { rejectUnauthorized: false }, max: 3 });
+  _pool.on('error', (err) => console.error('[supabase-store] pg error:', err.message));
   return _pool;
 }
 
-export function getDatabaseUrl() {
-  return process.env.DIRECT_URL || process.env.DATABASE_URL || process.env.Direct_Link || '';
-}
+/* ── Table init ─────────────────────────────────────────────────────────── */
 
-function resolvePool(options = {}) {
-  return options.pool || getPool();
-}
+let _tablesReady = false;
+async function ensureTables() {
+  if (_tablesReady) return;
+  const pool = getPgPool();
+  if (!pool) { _tablesReady = true; return; }
 
-async function initTables(pool = getPool()) {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS app_users (
       id           TEXT PRIMARY KEY,
       auth_user_id TEXT UNIQUE,
-      display_name TEXT NOT NULL,
+      display_name TEXT NOT NULL DEFAULT 'Anonymous device',
       created_at   TIMESTAMPTZ DEFAULT NOW(),
       updated_at   TIMESTAMPTZ DEFAULT NOW()
     )
   `);
-  await pool.query('ALTER TABLE app_users ADD COLUMN IF NOT EXISTS auth_user_id TEXT');
-  await pool.query("ALTER TABLE app_users ADD COLUMN IF NOT EXISTS display_name TEXT NOT NULL DEFAULT 'Anonymous device'");
-  await pool.query('ALTER TABLE app_users ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW()');
-  await pool.query('ALTER TABLE app_users ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW()');
   await pool.query(`
     CREATE TABLE IF NOT EXISTS user_devices (
       id                 TEXT PRIMARY KEY,
@@ -61,11 +62,6 @@ async function initTables(pool = getPool()) {
       last_seen_at       TIMESTAMPTZ DEFAULT NOW()
     )
   `);
-  await pool.query('ALTER TABLE user_devices ADD COLUMN IF NOT EXISTS user_id TEXT');
-  await pool.query('ALTER TABLE user_devices ADD COLUMN IF NOT EXISTS device_fingerprint TEXT');
-  await pool.query('ALTER TABLE user_devices ADD COLUMN IF NOT EXISTS user_agent TEXT');
-  await pool.query('ALTER TABLE user_devices ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW()');
-  await pool.query('ALTER TABLE user_devices ADD COLUMN IF NOT EXISTS last_seen_at TIMESTAMPTZ DEFAULT NOW()');
   await pool.query(`
     CREATE TABLE IF NOT EXISTS tiny_connect_user_settings (
       user_id    TEXT PRIMARY KEY REFERENCES app_users(id) ON DELETE CASCADE,
@@ -73,9 +69,6 @@ async function initTables(pool = getPool()) {
       updated_at TIMESTAMPTZ DEFAULT NOW()
     )
   `);
-  await pool.query('ALTER TABLE tiny_connect_user_settings ADD COLUMN IF NOT EXISTS user_id TEXT');
-  await pool.query("ALTER TABLE tiny_connect_user_settings ADD COLUMN IF NOT EXISTS settings JSONB NOT NULL DEFAULT '{}'::jsonb");
-  await pool.query('ALTER TABLE tiny_connect_user_settings ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW()');
   await pool.query(`
     CREATE TABLE IF NOT EXISTS ssh_keys (
       id          TEXT PRIMARY KEY,
@@ -85,10 +78,6 @@ async function initTables(pool = getPool()) {
       created_at  TIMESTAMPTZ DEFAULT NOW()
     )
   `);
-  await pool.query('ALTER TABLE ssh_keys ADD COLUMN IF NOT EXISTS user_id TEXT');
-  await pool.query('ALTER TABLE ssh_keys ADD COLUMN IF NOT EXISTS name TEXT');
-  await pool.query('ALTER TABLE ssh_keys ADD COLUMN IF NOT EXISTS private_key TEXT');
-  await pool.query('ALTER TABLE ssh_keys ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW()');
   await pool.query(`
     CREATE TABLE IF NOT EXISTS connection_profiles (
       id         TEXT PRIMARY KEY,
@@ -103,114 +92,114 @@ async function initTables(pool = getPool()) {
       created_at TIMESTAMPTZ DEFAULT NOW()
     )
   `);
-  await pool.query('ALTER TABLE connection_profiles ADD COLUMN IF NOT EXISTS user_id TEXT');
-  await pool.query('ALTER TABLE connection_profiles ADD COLUMN IF NOT EXISTS name TEXT');
-  await pool.query('ALTER TABLE connection_profiles ADD COLUMN IF NOT EXISTS host TEXT');
-  await pool.query('ALTER TABLE connection_profiles ADD COLUMN IF NOT EXISTS port INTEGER DEFAULT 22');
-  await pool.query('ALTER TABLE connection_profiles ADD COLUMN IF NOT EXISTS username TEXT');
-  await pool.query('ALTER TABLE connection_profiles ADD COLUMN IF NOT EXISTS key_id TEXT');
-  await pool.query("ALTER TABLE connection_profiles ADD COLUMN IF NOT EXISTS passphrase TEXT NOT NULL DEFAULT ''");
-  await pool.query('ALTER TABLE connection_profiles ADD COLUMN IF NOT EXISTS tmux BOOLEAN NOT NULL DEFAULT FALSE');
-  await pool.query('ALTER TABLE connection_profiles ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW()');
-  await pool.query('CREATE UNIQUE INDEX IF NOT EXISTS app_users_auth_user_id_unique ON app_users(auth_user_id) WHERE auth_user_id IS NOT NULL');
-  await pool.query('CREATE UNIQUE INDEX IF NOT EXISTS user_devices_device_fingerprint_unique ON user_devices(device_fingerprint)');
-  await pool.query('CREATE INDEX IF NOT EXISTS ssh_keys_user_created_idx ON ssh_keys(user_id, created_at ASC)');
-  await pool.query('CREATE INDEX IF NOT EXISTS connection_profiles_user_created_idx ON connection_profiles(user_id, created_at ASC)');
+  await pool.query('CREATE UNIQUE INDEX IF NOT EXISTS user_devices_fp_idx ON user_devices(device_fingerprint)');
+  await pool.query('CREATE INDEX IF NOT EXISTS ssh_keys_user_idx ON ssh_keys(user_id, created_at ASC)');
+  await pool.query('CREATE INDEX IF NOT EXISTS conn_profiles_user_idx ON connection_profiles(user_id, created_at ASC)');
+
+  _tablesReady = true;
 }
 
-async function ensureTables(pool = getPool()) {
-  if (_readyPools.has(pool)) return;
-  await initTables(pool);
-  _readyPools.add(pool);
-}
+/* ── Helpers ────────────────────────────────────────────────────────────── */
 
-function requireUserId(options = {}) {
-  if (!options.userId || typeof options.userId !== 'string') {
-    throw new Error('userId is required');
-  }
-  return options.userId;
+function slugify(str, fallback = 'item') {
+  return String(str)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '')
+    .slice(0, 40) || fallback;
 }
 
 function sanitizeFingerprint(value) {
-  if (typeof value !== 'string' || !value.trim()) {
-    throw new Error('deviceFingerprint is required');
-  }
+  if (typeof value !== 'string' || !value.trim()) throw new Error('deviceFingerprint is required');
   return createHash('sha256').update(value.trim()).digest('hex');
+}
+
+function requireUserId(options = {}) {
+  if (!options.userId || typeof options.userId !== 'string') throw new Error('userId is required');
+  return options.userId;
+}
+
+function toUser(row) {
+  return { id: row.id, authUserId: row.auth_user_id || null, displayName: row.display_name };
+}
+
+async function sbCheck(result, label) {
+  if (result.error) throw new Error(`[supabase-store] ${label}: ${result.error.message}`);
+  return result.data;
 }
 
 /* ── User store ─────────────────────────────────────────────────────────── */
 
-export function createSupabaseUserStore(options = {}) {
-  const pool = resolvePool(options);
-
+export function createSupabaseUserStore() {
   return {
     async init() {
-      await ensureTables(pool);
+      await ensureTables();
     },
 
     async ensureUserForDevice({ deviceFingerprint, userAgent }) {
-      await ensureTables(pool);
-      const fingerprintHash = sanitizeFingerprint(deviceFingerprint);
-      const existing = await pool.query(
-        `SELECT u.id, u.auth_user_id, u.display_name
-         FROM user_devices d
-         JOIN app_users u ON u.id = d.user_id
-         WHERE d.device_fingerprint = $1`,
-        [fingerprintHash]
-      );
-      if (existing.rows[0]) {
-        await pool.query('UPDATE user_devices SET last_seen_at = NOW(), user_agent = $2 WHERE device_fingerprint = $1', [
-          fingerprintHash,
-          userAgent || null
-        ]);
-        return toUser(existing.rows[0]);
+      await ensureTables();
+      const fp = sanitizeFingerprint(deviceFingerprint);
+
+      const existing = await sb()
+        .from('user_devices')
+        .select('user_id, app_users(id, auth_user_id, display_name)')
+        .eq('device_fingerprint', fp)
+        .maybeSingle();
+      if (existing.error) throw new Error(existing.error.message);
+
+      if (existing.data) {
+        await sb().from('user_devices')
+          .update({ last_seen_at: new Date().toISOString(), user_agent: userAgent || null })
+          .eq('device_fingerprint', fp);
+        return toUser(existing.data.app_users);
       }
 
       const userId = `user_${randomUUID()}`;
-      const inserted = await pool.query(
-        'INSERT INTO app_users (id, display_name) VALUES ($1, $2) RETURNING id, auth_user_id, display_name',
-        [userId, 'Anonymous device']
+      await sbCheck(
+        await sb().from('app_users').insert({ id: userId, display_name: 'Anonymous device' }),
+        'insert app_users'
       );
-      await pool.query(
-        'INSERT INTO user_devices (id, user_id, device_fingerprint, user_agent) VALUES ($1, $2, $3, $4)',
-        [`device_${randomUUID()}`, userId, fingerprintHash, userAgent || null]
+      await sbCheck(
+        await sb().from('user_devices').insert({
+          id: `device_${randomUUID()}`,
+          user_id: userId,
+          device_fingerprint: fp,
+          user_agent: userAgent || null
+        }),
+        'insert user_devices'
       );
-      await pool.query(
-        'INSERT INTO tiny_connect_user_settings (user_id, settings) VALUES ($1, $2) ON CONFLICT (user_id) DO NOTHING',
-        [userId, {}]
-      );
-      return toUser(inserted.rows[0]);
+      await sb().from('tiny_connect_user_settings')
+        .upsert({ user_id: userId, settings: {} }, { onConflict: 'user_id', ignoreDuplicates: true });
+
+      return { id: userId, authUserId: null, displayName: 'Anonymous device' };
     },
 
     async linkAuthUser({ userId, authUserId, displayName }) {
-      await ensureTables(pool);
       if (!userId || !authUserId) throw new Error('userId and authUserId are required');
-      const { rows } = await pool.query(
-        `UPDATE app_users
-         SET auth_user_id = $2,
-             display_name = COALESCE($3, display_name),
-             updated_at = NOW()
-         WHERE id = $1
-         RETURNING id, auth_user_id, display_name`,
-        [userId, authUserId, displayName || null]
-      );
-      if (!rows[0]) throw new Error('User not found');
-      return toUser(rows[0]);
+      const result = await sb().from('app_users')
+        .update({ auth_user_id: authUserId, display_name: displayName || undefined, updated_at: new Date().toISOString() })
+        .eq('id', userId)
+        .select('id, auth_user_id, display_name')
+        .maybeSingle();
+      if (result.error) throw new Error(result.error.message);
+      if (!result.data) throw new Error('User not found');
+      return toUser(result.data);
     },
 
     async getUserSettings({ userId }) {
-      await ensureTables(pool);
-      const { rows } = await pool.query('SELECT settings FROM tiny_connect_user_settings WHERE user_id = $1', [userId]);
-      return rows[0]?.settings || {};
+      const result = await sb().from('tiny_connect_user_settings')
+        .select('settings')
+        .eq('user_id', userId)
+        .maybeSingle();
+      if (result.error) throw new Error(result.error.message);
+      return result.data?.settings || {};
     },
 
     async saveUserSettings({ userId, settings }) {
-      await ensureTables(pool);
-      await pool.query(
-        `INSERT INTO tiny_connect_user_settings (user_id, settings)
-         VALUES ($1, $2)
-         ON CONFLICT (user_id) DO UPDATE SET settings = EXCLUDED.settings, updated_at = NOW()`,
-        [userId, settings || {}]
+      await sbCheck(
+        await sb().from('tiny_connect_user_settings')
+          .upsert({ user_id: userId, settings: settings || {}, updated_at: new Date().toISOString() }, { onConflict: 'user_id' }),
+        'upsert user_settings'
       );
       return settings || {};
     }
@@ -219,56 +208,58 @@ export function createSupabaseUserStore(options = {}) {
 
 /* ── Key store ──────────────────────────────────────────────────────────── */
 
-export function createSupabaseKeyStore(localDir, options = {}) {
-  const pool = resolvePool(options);
+export function createSupabaseKeyStore(localDir) {
   fs.mkdirSync(localDir, { recursive: true, mode: 0o700 });
 
-  function localPath(id) {
-    return path.join(localDir, `${id}.pem`);
-  }
+  function localPath(id) { return path.join(localDir, `${id}.pem`); }
 
-  async function syncKeyToLocal(id, privateKey) {
+  function syncLocalKey(id, privateKey) {
     const fp = localPath(id);
-    if (!fs.existsSync(fp)) {
-      fs.writeFileSync(fp, privateKey, { mode: 0o600 });
-    }
+    if (!fs.existsSync(fp)) fs.writeFileSync(fp, privateKey, { mode: 0o600 });
   }
 
   return {
     async init() {
-      await ensureTables(pool);
-      const { rows } = await pool.query('SELECT id, private_key FROM ssh_keys');
-      for (const row of rows) {
-        await syncKeyToLocal(row.id, row.private_key);
+      await ensureTables();
+      const result = await sb().from('ssh_keys').select('id, private_key');
+      if (!result.error && result.data) {
+        for (const row of result.data) syncLocalKey(row.id, row.private_key);
       }
     },
 
     async createKey({ userId, name, privateKey }) {
       if (!name?.trim()) throw new Error('Key name is required');
       if (!privateKey?.trim()) throw new Error('Private key content is required');
-      const ownerId = requireUserId({ userId });
+      requireUserId({ userId });
       const id = `${slugify(name, 'key')}-${randomBytes(4).toString('hex')}`;
-      await ensureTables(pool);
-      await pool.query(
-        'INSERT INTO ssh_keys (id, user_id, name, private_key) VALUES ($1, $2, $3, $4)',
-        [id, ownerId, name.trim(), privateKey.trim()]
+      await sbCheck(
+        await sb().from('ssh_keys').insert({ id, user_id: userId, name: name.trim(), private_key: privateKey.trim() }),
+        'insert ssh_keys'
       );
-      await syncKeyToLocal(id, privateKey.trim());
+      syncLocalKey(id, privateKey.trim());
       return { id, name: name.trim() };
     },
 
     async listKeys(options = {}) {
       const userId = requireUserId(options);
-      await ensureTables(pool);
-      const { rows } = await pool.query('SELECT id, name FROM ssh_keys WHERE user_id = $1 ORDER BY created_at ASC', [userId]);
-      return rows;
+      const result = await sb().from('ssh_keys')
+        .select('id, name')
+        .eq('user_id', userId)
+        .order('created_at', { ascending: true });
+      if (result.error) throw new Error(result.error.message);
+      return result.data || [];
     },
 
     async deleteKey(id, options = {}) {
       const userId = requireUserId(options);
-      await ensureTables(pool);
-      const { rowCount } = await pool.query('DELETE FROM ssh_keys WHERE id = $1 AND user_id = $2', [id, userId]);
-      if (rowCount === 0) throw new Error('Key not found');
+      const result = await sb().from('ssh_keys')
+        .delete()
+        .eq('id', id)
+        .eq('user_id', userId)
+        .select('id')
+        .maybeSingle();
+      if (result.error) throw new Error(result.error.message);
+      if (!result.data) throw new Error('Key not found');
       try { fs.unlinkSync(localPath(id)); } catch (_) {}
     },
 
@@ -276,70 +267,64 @@ export function createSupabaseKeyStore(localDir, options = {}) {
       const fp = localPath(id);
       if (!fs.existsSync(fp)) throw new Error(`Key file not found locally for id: ${id}`);
       return fp;
-    },
+    }
   };
 }
 
 /* ── Profile store ──────────────────────────────────────────────────────── */
 
-export function createSupabaseProfileStore(options = {}) {
-  const pool = resolvePool(options);
-
+export function createSupabaseProfileStore() {
   return {
     async init() {
-      await ensureTables(pool);
+      await ensureTables();
     },
 
     async listProfiles(options = {}) {
       const userId = requireUserId(options);
-      await ensureTables(pool);
-      const { rows } = await pool.query(
-        'SELECT id, name, host, port, username, key_id, passphrase, tmux FROM connection_profiles WHERE user_id = $1 ORDER BY created_at ASC',
-        [userId]
-      );
-      return rows.map(r => ({ ...r, keyId: r.key_id }));
+      const result = await sb().from('connection_profiles')
+        .select('id, name, host, port, username, key_id, passphrase, tmux')
+        .eq('user_id', userId)
+        .order('created_at', { ascending: true });
+      if (result.error) throw new Error(result.error.message);
+      return (result.data || []).map(r => ({ ...r, keyId: r.key_id }));
     },
 
     async createProfile({ userId, name, host, port, username, keyId, passphrase, tmux }) {
       if (!name?.trim()) throw new Error('Profile name is required');
       if (!host?.trim()) throw new Error('Host is required');
       if (!username?.trim()) throw new Error('Username is required');
-      const ownerId = requireUserId({ userId });
+      requireUserId({ userId });
       const id = `${slugify(name, 'profile')}-${randomBytes(4).toString('hex')}`;
-      await ensureTables(pool);
-      await pool.query(
-        'INSERT INTO connection_profiles (id, user_id, name, host, port, username, key_id, passphrase, tmux) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)',
-        [id, ownerId, name.trim(), host.trim(), Number(port) || 22, username.trim(), keyId || null, String(passphrase || ''), Boolean(tmux)]
+      await sbCheck(
+        await sb().from('connection_profiles').insert({
+          id, user_id: userId,
+          name: name.trim(), host: host.trim(),
+          port: Number(port) || 22, username: username.trim(),
+          key_id: keyId || null,
+          passphrase: String(passphrase || ''),
+          tmux: Boolean(tmux)
+        }),
+        'insert connection_profiles'
       );
-      return {
-        id,
-        name: name.trim(),
-        host: host.trim(),
-        port: Number(port) || 22,
-        username: username.trim(),
-        keyId: keyId || null,
-        passphrase: String(passphrase || ''),
-        tmux: Boolean(tmux)
-      };
+      return { id, name: name.trim(), host: host.trim(), port: Number(port) || 22, username: username.trim(), keyId: keyId || null, passphrase: String(passphrase || ''), tmux: Boolean(tmux) };
     },
 
     async deleteProfile(id, options = {}) {
       const userId = requireUserId(options);
-      await ensureTables(pool);
-      const { rowCount } = await pool.query('DELETE FROM connection_profiles WHERE id = $1 AND user_id = $2', [id, userId]);
-      if (rowCount === 0) throw new Error('Profile not found');
-    },
+      const result = await sb().from('connection_profiles')
+        .delete()
+        .eq('id', id)
+        .eq('user_id', userId)
+        .select('id')
+        .maybeSingle();
+      if (result.error) throw new Error(result.error.message);
+      if (!result.data) throw new Error('Profile not found');
+    }
   };
 }
 
-function toUser(row) {
-  return {
-    id: row.id,
-    authUserId: row.auth_user_id || null,
-    displayName: row.display_name
-  };
-}
+/* ── Config check ───────────────────────────────────────────────────────── */
 
 export function isSupabaseConfigured() {
-  return !!getDatabaseUrl();
+  return !!(process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY);
 }
