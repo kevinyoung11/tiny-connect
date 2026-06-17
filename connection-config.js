@@ -27,7 +27,8 @@ export function buildConnectionConfig(input = {}, options = {}) {
     port,
     username,
     privateKeyPath: expandHome(privateKeyPath),
-    passphrase: typeof input.passphrase === 'string' ? input.passphrase : ''
+    passphrase: typeof input.passphrase === 'string' ? input.passphrase : '',
+    tmux: input.tmux === true,
   };
 }
 

@@ -29,6 +29,18 @@
       </div>
 
       <form id="connectForm" autocomplete="off" novalidate>
+        <!-- Saved profiles -->
+        <div class="profile-row">
+          <select id="profileSelect"></select>
+          <button type="button" class="btn-icon" id="saveProfileBtn" title="Save as profile">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
+              <polyline points="17 21 17 13 7 13 7 21"/>
+              <polyline points="7 3 7 8 15 8"/>
+            </svg>
+          </button>
+        </div>
+
         <div class="mode-tabs" role="tablist">
           <button type="button" class="tab active" data-mode="ssh" role="tab" aria-selected="true">SSH</button>
           <button type="button" class="tab" data-mode="local" role="tab" aria-selected="false">Local</button>
@@ -53,8 +65,8 @@
             <label>SSH Key</label>
             <div class="key-row">
               <select id="keyId"></select>
-              <button type="button" class="btn-add-key" id="addKeyBtn" title="Add new key">
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
+              <button type="button" class="btn-icon" id="addKeyBtn" title="Add new key">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
                   <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
                 </svg>
               </button>
@@ -63,6 +75,13 @@
           <div class="field">
             <label for="passphrase">Passphrase <span class="label-opt">optional</span></label>
             <input id="passphrase" type="password" placeholder="••••••••" />
+          </div>
+          <div class="field field--toggle">
+            <label for="useTmux">Use tmux <span class="label-opt">session persistence</span></label>
+            <label class="toggle-switch">
+              <input type="checkbox" id="useTmux" />
+              <span class="toggle-track"></span>
+            </label>
           </div>
         </div>
 
@@ -73,7 +92,7 @@
       </form>
     </div>
 
-    <!-- Add key sheet (slides up from bottom) -->
+    <!-- Add key sheet -->
     <div class="sheet" id="keySheet" role="dialog" aria-modal="true" aria-label="Add SSH Key" hidden>
       <div class="sheet-handle"></div>
       <div class="sheet-head">
@@ -97,7 +116,29 @@
       </form>
     </div>
 
-    <!-- Top HUD bar (shown when connected) -->
+    <!-- SFTP file browser sheet -->
+    <div class="sheet sheet--sftp" id="sftpSheet" role="dialog" aria-modal="true" aria-label="Files" hidden>
+      <div class="sheet-handle"></div>
+      <div class="sheet-head">
+        <h2 class="sheet-title">Files</h2>
+        <span class="sftp-path" id="sftpPath">~</span>
+        <button type="button" class="btn-x" id="closeSftpSheet" aria-label="Close">
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
+            <path d="M1.5 1.5l9 9M10.5 1.5l-9 9" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+          </svg>
+        </button>
+      </div>
+      <div class="sftp-toolbar">
+        <button type="button" class="sftp-action-btn" id="sftpUpBtn">↑ Up</button>
+        <label class="sftp-action-btn" for="sftpFileInput">⬆ Upload</label>
+        <input type="file" id="sftpFileInput" hidden multiple />
+      </div>
+      <div class="sftp-list" id="sftpList">
+        <div class="sftp-loading">Loading…</div>
+      </div>
+    </div>
+
+    <!-- Top HUD bar -->
     <header class="hud" id="hud" hidden>
       <div class="hud-left">
         <div class="dot" id="statusDot" aria-hidden="true"></div>
@@ -108,16 +149,27 @@
         <button type="button" class="action-btn" data-send="&#x1b;" title="Escape">Esc</button>
         <button type="button" class="action-btn" data-send="&#x9;" title="Tab">⇥</button>
         <button type="button" class="action-btn" id="pasteBtn" title="Paste">Paste</button>
+        <button type="button" class="action-btn" id="filesBtn" title="Browse files" hidden>Files</button>
         <button type="button" class="action-btn action-btn--close" id="disconnectBtn" aria-label="Disconnect">✕</button>
       </div>
     </header>
 
+    <!-- Tab bar -->
+    <div class="tab-bar" id="tabBar" hidden>
+      <div class="tab-list" id="tabList"></div>
+      <button type="button" class="tab-new" id="newTabBtn" aria-label="New tab" title="New connection">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+          <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+        </svg>
+      </button>
+    </div>
+
     <!-- Terminal workspace -->
     <main class="workspace" id="workspace">
-      <div id="terminal" aria-label="Terminal output"></div>
+      <div id="termContainer"></div>
     </main>
 
-    <!-- Mobile control bar (shown when connected) -->
+    <!-- Mobile control bar -->
     <div class="mbar" id="mbar" hidden>
       <div class="mbar-keys" id="mbarKeys">
         <button class="mkey" data-send="&#x3;">⌃C</button>

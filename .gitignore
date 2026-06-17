@@ -1,4 +1,5 @@
 node_modules/
 .keys/
+.profiles/
 .DS_Store
 npm-debug.log*

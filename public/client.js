@@ -1,37 +1,8 @@
 import { Terminal } from 'https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0/+esm';
 import { FitAddon } from 'https://cdn.jsdelivr.net/npm/@xterm/addon-fit@0.10.0/+esm';
 
-/* ─── DOM refs ──────────────────────────────────────────────────────────── */
-const backdrop     = document.querySelector('#backdrop');
-const connectModal = document.querySelector('#connectModal');
-const connectForm  = document.querySelector('#connectForm');
-const connectBtn   = document.querySelector('#connectBtn');
-const btnLabel     = connectBtn.querySelector('.btn-label');
-const spinner      = document.querySelector('#spinner');
-const sshFields    = document.querySelector('#sshFields');
-const hostInput    = document.querySelector('#host');
-const portInput    = document.querySelector('#port');
-const usernameInput = document.querySelector('#username');
-const keyIdInput   = document.querySelector('#keyId');
-const passphraseInput = document.querySelector('#passphrase');
-const addKeyBtn    = document.querySelector('#addKeyBtn');
-const keySheet     = document.querySelector('#keySheet');
-const closeKeySheet = document.querySelector('#closeKeySheet');
-const keyForm      = document.querySelector('#keyForm');
-const keyNameInput = document.querySelector('#keyName');
-const privateKeyInput = document.querySelector('#privateKey');
-const hud          = document.querySelector('#hud');
-const hudHost      = document.querySelector('#hudHost');
-const disconnectBtn = document.querySelector('#disconnectBtn');
-const workspace    = document.querySelector('#workspace');
-const terminalEl   = document.querySelector('#terminal');
-const mbar         = document.querySelector('#mbar');
-const cmdForm      = document.querySelector('#cmdForm');
-const cmdInput     = document.querySelector('#cmdInput');
-const pasteBtn     = document.querySelector('#pasteBtn');
-
-/* ─── Terminal ──────────────────────────────────────────────────────────── */
-const term = new Terminal({
+/* ─── Terminal theme ─────────────────────────────────────────────────────── */
+const TERM_OPTS = {
   cursorBlink: true,
   convertEol: true,
   scrollback: 5000,
@@ -45,40 +16,123 @@ const term = new Terminal({
     cursor:              '#00d4aa',
     cursorAccent:        '#09090d',
     selectionBackground: 'rgba(0,212,170,0.22)',
-    black:               '#1a1b26',
-    red:                 '#f7768e',
-    green:               '#9ece6a',
-    yellow:              '#e0af68',
-    blue:                '#7aa2f7',
-    magenta:             '#bb9af7',
-    cyan:                '#7dcfff',
-    white:               '#a9b1d6',
-    brightBlack:         '#444b6a',
-    brightRed:           '#ff7a93',
-    brightGreen:         '#b9f27c',
-    brightYellow:        '#ff9e64',
-    brightBlue:          '#7da6ff',
-    brightMagenta:       '#bb9af7',
-    brightCyan:          '#0db9d7',
-    brightWhite:         '#acb0d0',
+    black:   '#1a1b26', red:     '#f7768e', green:   '#9ece6a', yellow:  '#e0af68',
+    blue:    '#7aa2f7', magenta: '#bb9af7', cyan:    '#7dcfff', white:   '#a9b1d6',
+    brightBlack:   '#444b6a', brightRed:   '#ff7a93', brightGreen:  '#b9f27c',
+    brightYellow:  '#ff9e64', brightBlue:  '#7da6ff', brightMagenta:'#bb9af7',
+    brightCyan:    '#0db9d7', brightWhite: '#acb0d0',
   },
-});
+};
 
-const fitAddon = new FitAddon();
-term.loadAddon(fitAddon);
-term.open(terminalEl);
-fitAddon.fit();
+/* ─── DOM refs ───────────────────────────────────────────────────────────── */
+const backdrop        = document.querySelector('#backdrop');
+const connectModal    = document.querySelector('#connectModal');
+const connectForm     = document.querySelector('#connectForm');
+const connectBtn      = document.querySelector('#connectBtn');
+const btnLabel        = connectBtn.querySelector('.btn-label');
+const spinner         = document.querySelector('#spinner');
+const sshFields       = document.querySelector('#sshFields');
+const hostInput       = document.querySelector('#host');
+const portInput       = document.querySelector('#port');
+const usernameInput   = document.querySelector('#username');
+const keyIdInput      = document.querySelector('#keyId');
+const passphraseInput = document.querySelector('#passphrase');
+const useTmuxInput    = document.querySelector('#useTmux');
+const addKeyBtn       = document.querySelector('#addKeyBtn');
+const keySheet        = document.querySelector('#keySheet');
+const closeKeySheet   = document.querySelector('#closeKeySheet');
+const keyForm         = document.querySelector('#keyForm');
+const keyNameInput    = document.querySelector('#keyName');
+const privateKeyInput = document.querySelector('#privateKey');
+const profileSelect   = document.querySelector('#profileSelect');
+const saveProfileBtn  = document.querySelector('#saveProfileBtn');
+const hud             = document.querySelector('#hud');
+const statusDot       = document.querySelector('#statusDot');
+const hudHost         = document.querySelector('#hudHost');
+const disconnectBtn   = document.querySelector('#disconnectBtn');
+const filesBtn        = document.querySelector('#filesBtn');
+const tabBar          = document.querySelector('#tabBar');
+const tabList         = document.querySelector('#tabList');
+const newTabBtn       = document.querySelector('#newTabBtn');
+const workspace       = document.querySelector('#workspace');
+const termContainer   = document.querySelector('#termContainer');
+const mbar            = document.querySelector('#mbar');
+const cmdForm         = document.querySelector('#cmdForm');
+const cmdInput        = document.querySelector('#cmdInput');
+const pasteBtn        = document.querySelector('#pasteBtn');
+const sftpSheet       = document.querySelector('#sftpSheet');
+const closeSftpSheetBtn = document.querySelector('#closeSftpSheet');
+const sftpPathEl      = document.querySelector('#sftpPath');
+const sftpListEl      = document.querySelector('#sftpList');
+const sftpUpBtn       = document.querySelector('#sftpUpBtn');
+const sftpFileInput   = document.querySelector('#sftpFileInput');
 
-/* ─── State ─────────────────────────────────────────────────────────────── */
-let ws          = null;
-let currentMode = 'ssh';
+/* ─── Session class ──────────────────────────────────────────────────────── */
+class Session {
+  constructor() {
+    this.sshSessionId = null;
+    this.ws = null;
+    this.label = 'New Session';
+    this.connected = false;
 
-/* ─── Init ──────────────────────────────────────────────────────────────── */
+    this.el = document.createElement('div');
+    this.el.className = 'terminal-pane';
+    this.el.hidden = true;
+    termContainer.append(this.el);
+
+    this.term = new Terminal(TERM_OPTS);
+    this.fitAddon = new FitAddon();
+    this.term.loadAddon(this.fitAddon);
+    this.term.open(this.el);
+    this.term.onData(data => this.send({ type: 'input', data }));
+  }
+
+  send(msg) {
+    if (this.ws?.readyState === WebSocket.OPEN) {
+      this.ws.send(JSON.stringify(msg));
+    }
+  }
+
+  fit() {
+    this.fitAddon.fit();
+    this.send({ type: 'resize', cols: this.term.cols, rows: this.term.rows });
+  }
+
+  activate() {
+    this.el.hidden = false;
+    requestAnimationFrame(() => {
+      this.fitAddon.fit();
+      this.send({ type: 'resize', cols: this.term.cols, rows: this.term.rows });
+      this.term.focus();
+    });
+  }
+
+  deactivate() {
+    this.el.hidden = true;
+  }
+
+  close() {
+    this.ws?.close();
+    this.term.dispose();
+    this.el.remove();
+  }
+}
+
+/* ─── State ──────────────────────────────────────────────────────────────── */
+let sessions      = [];
+let activeSession = null;
+let currentMode   = 'ssh';
+let profilesCache = [];
+let sftpCwd       = '.';
+let sftpSessionId = null;
+
+/* ─── Init ───────────────────────────────────────────────────────────────── */
 openModal();
 loadKeys();
+loadProfiles();
 renderModeTabs();
 
-/* ─── Mode tabs ─────────────────────────────────────────────────────────── */
+/* ─── Mode tabs ──────────────────────────────────────────────────────────── */
 document.querySelectorAll('.tab').forEach(tab => {
   tab.addEventListener('click', () => {
     currentMode = tab.dataset.mode;
@@ -95,59 +149,55 @@ function renderModeTabs() {
   sshFields.hidden = currentMode !== 'ssh';
 }
 
-/* ─── Connect ───────────────────────────────────────────────────────────── */
-connectForm.addEventListener('submit', e => {
-  e.preventDefault();
-  doConnect();
-});
+/* ─── Connect ────────────────────────────────────────────────────────────── */
+connectForm.addEventListener('submit', e => { e.preventDefault(); doConnect(); });
 
 function doConnect() {
-  if (ws?.readyState === WebSocket.OPEN) {
-    ws.close();
-    term.clear();
-  }
   setConnecting(true);
+
+  const sess = new Session();
+  sessions.push(sess);
 
   const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
   const socket = new WebSocket(`${protocol}//${location.host}/terminal`);
-  ws = socket;
+  sess.ws = socket;
 
   socket.addEventListener('open', () => {
     const config = buildConfig();
     socket.send(JSON.stringify({ type: 'connect', config }));
+    sess.label = config.mode === 'ssh' ? `${config.username}@${config.host}` : 'local';
+    sess.connected = true;
     closeModal();
-    showHud(config.mode === 'ssh' ? `${config.username}@${config.host}` : 'local');
+    showHud();
     showMbar();
-    fit();
-    term.focus();
+    setActiveSession(sess);
     setConnecting(false);
   });
 
   socket.addEventListener('message', ev => {
     const msg = JSON.parse(ev.data);
-    if (msg.type === 'data') term.write(msg.data);
-    if (msg.type === 'exit') handleDisconnect(`exited ${msg.exitCode}`);
+    if (msg.type === 'data')    sess.term.write(msg.data);
+    if (msg.type === 'session') { sess.sshSessionId = msg.id; if (sess === activeSession) updateHud(); }
+    if (msg.type === 'exit')    onSessionDisconnect(sess, `exited ${msg.exitCode}`);
   });
 
-  socket.addEventListener('close', () => handleDisconnect('disconnected'));
-
-  socket.addEventListener('error', () => {
-    setConnecting(false);
-    toast('Connection error', 'err');
-  });
+  socket.addEventListener('close', () => onSessionDisconnect(sess, 'disconnected'));
+  socket.addEventListener('error', () => { setConnecting(false); toast('Connection error', 'err'); });
 }
 
-function handleDisconnect(reason) {
-  ws = null;
-  hideHud();
-  hideMbar();
-  openModal();
-  term.writeln(`\r\n\x1b[2m── ${reason} ──\x1b[0m\r\n`);
+function onSessionDisconnect(sess, reason) {
+  sess.ws = null;
+  sess.connected = false;
+  sess.sshSessionId = null;
+  sess.term.writeln(`\r\n\x1b[2m── ${reason} ──\x1b[0m\r\n`);
   setConnecting(false);
+  renderTabs();
+  if (sess === activeSession) updateHud();
 }
 
 function buildConfig() {
-  if (currentMode === 'local') return { mode: 'local' };
+  const tmux = useTmuxInput?.checked ?? false;
+  if (currentMode === 'local') return { mode: 'local', tmux };
   return {
     mode:       'ssh',
     host:       hostInput.value.trim(),
@@ -155,23 +205,128 @@ function buildConfig() {
     username:   usernameInput.value.trim(),
     keyId:      keyIdInput.value,
     passphrase: passphraseInput.value,
+    tmux,
   };
 }
 
-/* ─── Disconnect ────────────────────────────────────────────────────────── */
-disconnectBtn.addEventListener('click', () => ws?.close());
+/* ─── Disconnect ─────────────────────────────────────────────────────────── */
+disconnectBtn.addEventListener('click', () => activeSession?.ws?.close());
 
-/* ─── Add key sheet ─────────────────────────────────────────────────────── */
+/* ─── Multi-tab management ───────────────────────────────────────────────── */
+newTabBtn.addEventListener('click', () => openModal());
+
+function setActiveSession(sess) {
+  if (activeSession === sess) { sess.activate(); return; }
+  activeSession?.deactivate();
+  activeSession = sess;
+  sess.activate();
+  renderTabs();
+  updateHud();
+}
+
+function closeSession(sess) {
+  sess.close();
+  sessions = sessions.filter(s => s !== sess);
+
+  if (activeSession === sess) {
+    activeSession = null;
+    if (sessions.length > 0) {
+      const next = sessions[sessions.length - 1];
+      activeSession = next;
+      next.activate();
+    }
+  }
+
+  renderTabs();
+  updateHud();
+
+  if (sessions.length === 0) {
+    hideHud();
+    hideMbar();
+    hideTabBar();
+    openModal();
+  }
+}
+
+function renderTabs() {
+  tabList.innerHTML = '';
+  for (const sess of sessions) {
+    const item = document.createElement('div');
+    item.className = 'tab-item'
+      + (sess === activeSession ? ' active' : '')
+      + (sess.connected ? '' : ' disconnected');
+
+    const label = document.createElement('span');
+    label.className = 'tab-label';
+    label.textContent = sess.label;
+
+    const closeBtn = document.createElement('button');
+    closeBtn.className = 'tab-close';
+    closeBtn.textContent = '×';
+    closeBtn.title = 'Close tab';
+    closeBtn.addEventListener('click', e => { e.stopPropagation(); closeSession(sess); });
+
+    item.append(label, closeBtn);
+    item.addEventListener('click', () => setActiveSession(sess));
+    tabList.append(item);
+  }
+
+  if (sessions.length > 0) showTabBar(); else hideTabBar();
+}
+
+/* ─── HUD ────────────────────────────────────────────────────────────────── */
+function updateHud() {
+  const sess = activeSession;
+  if (!sess) { filesBtn && (filesBtn.hidden = true); return; }
+
+  hudHost.textContent = sess.label;
+  if (sess.connected) {
+    statusDot.classList.remove('off');
+  } else {
+    statusDot.classList.add('off');
+  }
+  if (filesBtn) filesBtn.hidden = !(sess.connected && sess.sshSessionId);
+}
+
+/* ─── [data-send] buttons ────────────────────────────────────────────────── */
+document.querySelectorAll('[data-send]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    activeSession?.send({ type: 'input', data: btn.dataset.send });
+    activeSession?.term.focus();
+  });
+});
+
+/* ─── Paste ──────────────────────────────────────────────────────────────── */
+pasteBtn?.addEventListener('click', async () => {
+  const text = await navigator.clipboard.readText().catch(() => '');
+  if (text) activeSession?.send({ type: 'input', data: text });
+  activeSession?.term.focus();
+});
+
+/* ─── Command bar ────────────────────────────────────────────────────────── */
+cmdForm.addEventListener('submit', e => {
+  e.preventDefault();
+  const val = cmdInput.value;
+  if (!val) return;
+  activeSession?.send({ type: 'input', data: val + '\r' });
+  cmdInput.value = '';
+  activeSession?.term.focus();
+});
+
+/* ─── Resize ─────────────────────────────────────────────────────────────── */
+window.addEventListener('resize', () => requestAnimationFrame(() => activeSession?.fit()));
+window.visualViewport?.addEventListener('resize', () => requestAnimationFrame(() => activeSession?.fit()));
+
+/* ─── Add key sheet ──────────────────────────────────────────────────────── */
 addKeyBtn.addEventListener('click', openKeySheet);
-closeKeySheet.addEventListener('click', closeSheet);
+closeKeySheet.addEventListener('click', closeKeySheet_fn);
 
 keyForm.addEventListener('submit', async e => {
   e.preventDefault();
   const btn = keyForm.querySelector('button[type=submit]');
   btn.disabled = true;
-  const orig = btn.querySelector('.btn-label')?.textContent || btn.textContent;
+  const orig = btn.textContent;
   btn.textContent = 'Saving…';
-
   try {
     const res = await fetch('/api/keys', {
       method: 'POST',
@@ -180,11 +335,10 @@ keyForm.addEventListener('submit', async e => {
     });
     const body = await res.json();
     if (!res.ok) throw new Error(body.error || 'Save failed');
-
-    keyNameInput.value   = '';
+    keyNameInput.value = '';
     privateKeyInput.value = '';
     await loadKeys(body.key.id);
-    closeSheet();
+    closeKeySheet_fn();
     toast('Key saved', 'ok');
   } catch (err) {
     toast(err.message, 'err');
@@ -194,59 +348,187 @@ keyForm.addEventListener('submit', async e => {
   }
 });
 
-/* ─── Terminal → server ─────────────────────────────────────────────────── */
-term.onData(data => send({ type: 'input', data }));
-
-/* ─── [data-send] buttons ───────────────────────────────────────────────── */
-document.querySelectorAll('[data-send]').forEach(btn => {
-  btn.addEventListener('click', () => {
-    send({ type: 'input', data: btn.dataset.send });
-    term.focus();
-  });
-});
-
-/* ─── Paste ─────────────────────────────────────────────────────────────── */
-pasteBtn?.addEventListener('click', async () => {
-  const text = await navigator.clipboard.readText().catch(() => '');
-  if (text) send({ type: 'input', data: text });
-  term.focus();
-});
-
-/* ─── Command bar ───────────────────────────────────────────────────────── */
-cmdForm.addEventListener('submit', e => {
-  e.preventDefault();
-  const val = cmdInput.value;
-  if (!val) return;
-  send({ type: 'input', data: val + '\r' });
-  cmdInput.value = '';
-  term.focus();
-});
-
-/* ─── Resize ────────────────────────────────────────────────────────────── */
-window.addEventListener('resize', () => requestAnimationFrame(fit));
-window.visualViewport?.addEventListener('resize', () => requestAnimationFrame(fit));
-
-function fit() {
-  fitAddon.fit();
-  send({ type: 'resize', cols: term.cols, rows: term.rows });
+/* ─── Profile management ─────────────────────────────────────────────────── */
+async function loadProfiles() {
+  try {
+    const res = await fetch('/api/profiles');
+    const body = await res.json();
+    profilesCache = body.profiles || [];
+    renderProfileSelect();
+  } catch (_) {}
 }
 
-/* ─── API helpers ───────────────────────────────────────────────────────── */
-function send(msg) {
-  if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify(msg));
+function renderProfileSelect() {
+  if (!profileSelect) return;
+  profileSelect.innerHTML = '';
+  const ph = document.createElement('option');
+  ph.value = '';
+  ph.textContent = profilesCache.length ? '— Load profile —' : '— No profiles —';
+  profileSelect.append(ph);
+  for (const p of profilesCache) {
+    const opt = document.createElement('option');
+    opt.value = p.id;
+    opt.textContent = p.name;
+    profileSelect.append(opt);
+  }
 }
 
+profileSelect?.addEventListener('change', () => {
+  const profile = profilesCache.find(p => p.id === profileSelect.value);
+  if (!profile) return;
+  currentMode = 'ssh';
+  renderModeTabs();
+  hostInput.value     = profile.host || '';
+  portInput.value     = profile.port || '22';
+  usernameInput.value = profile.username || '';
+  if (profile.keyId) keyIdInput.value = profile.keyId;
+  profileSelect.value = '';
+});
+
+saveProfileBtn?.addEventListener('click', async () => {
+  if (currentMode !== 'ssh') { toast('Profiles are for SSH only', 'err'); return; }
+  const name = prompt('Profile name:');
+  if (!name?.trim()) return;
+  try {
+    const res = await fetch('/api/profiles', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: name.trim(),
+        host:     hostInput.value.trim(),
+        port:     portInput.value || '22',
+        username: usernameInput.value.trim(),
+        keyId:    keyIdInput.value,
+      }),
+    });
+    const body = await res.json();
+    if (!res.ok) throw new Error(body.error || 'Save failed');
+    await loadProfiles();
+    toast('Profile saved', 'ok');
+  } catch (err) {
+    toast(err.message, 'err');
+  }
+});
+
+/* ─── SFTP ───────────────────────────────────────────────────────────────── */
+filesBtn?.addEventListener('click', openSftp);
+closeSftpSheetBtn?.addEventListener('click', closeSftp);
+
+function openSftp() {
+  const sess = activeSession;
+  if (!sess?.sshSessionId) return;
+  sftpSessionId = sess.sshSessionId;
+  sftpSheet.removeAttribute('hidden');
+  requestAnimationFrame(() => sftpSheet.classList.add('open'));
+  loadSftpDir('.');
+}
+
+function closeSftp() {
+  sftpSheet.classList.remove('open');
+  setTimeout(() => sftpSheet.setAttribute('hidden', ''), 320);
+}
+
+async function loadSftpDir(dir) {
+  sftpCwd = dir;
+  sftpPathEl.textContent = dir === '.' ? '~' : dir;
+  sftpListEl.innerHTML = '<div class="sftp-loading">Loading…</div>';
+  try {
+    const res = await fetch(`/api/sftp/${sftpSessionId}/ls?path=${encodeURIComponent(dir)}`);
+    const body = await res.json();
+    if (!res.ok) throw new Error(body.error);
+    renderSftpEntries(body.entries, body.path);
+  } catch (err) {
+    sftpListEl.innerHTML = `<div class="sftp-loading" style="color:var(--danger)">${escHtml(err.message)}</div>`;
+  }
+}
+
+function renderSftpEntries(entries, basePath) {
+  sftpListEl.innerHTML = '';
+  if (!entries?.length) {
+    sftpListEl.innerHTML = '<div class="sftp-loading">Empty directory</div>';
+    return;
+  }
+  for (const entry of entries) {
+    const row = document.createElement('div');
+    row.className = 'sftp-entry' + (entry.isDir ? ' is-dir' : '');
+
+    const icon = document.createElement('span');
+    icon.className = 'sftp-entry-icon';
+    icon.textContent = entry.isDir ? '📁' : '📄';
+
+    const name = document.createElement('span');
+    name.className = 'sftp-entry-name';
+    name.textContent = entry.name;
+
+    const size = document.createElement('span');
+    size.className = 'sftp-entry-size';
+    size.textContent = entry.isDir ? '' : fmtSize(entry.size);
+
+    row.append(icon, name, size);
+
+    if (entry.isDir) {
+      row.addEventListener('click', () => {
+        const next = basePath === '.' ? entry.name : `${basePath}/${entry.name}`;
+        loadSftpDir(next);
+      });
+    } else {
+      const filePath = basePath === '.' ? entry.name : `${basePath}/${entry.name}`;
+      row.addEventListener('click', () => sftpDownload(filePath, entry.name));
+    }
+    sftpListEl.append(row);
+  }
+}
+
+function sftpDownload(filePath, filename) {
+  const a = document.createElement('a');
+  a.href = `/api/sftp/${sftpSessionId}/download?path=${encodeURIComponent(filePath)}`;
+  a.download = filename;
+  document.body.append(a);
+  a.click();
+  a.remove();
+}
+
+sftpUpBtn?.addEventListener('click', () => {
+  if (sftpCwd === '.' || sftpCwd === '/') return;
+  const parts = sftpCwd.split('/').filter(Boolean);
+  parts.pop();
+  loadSftpDir(parts.length === 0 ? '/' : '/' + parts.join('/'));
+});
+
+sftpFileInput?.addEventListener('change', async () => {
+  const files = Array.from(sftpFileInput.files);
+  let ok = 0;
+  for (const file of files) {
+    const remotePath = sftpCwd === '.' ? file.name
+      : sftpCwd === '/' ? `/${file.name}`
+      : `${sftpCwd}/${file.name}`;
+    try {
+      const res = await fetch(
+        `/api/sftp/${sftpSessionId}/upload?path=${encodeURIComponent(remotePath)}`,
+        { method: 'POST', body: file }
+      );
+      const body = await res.json();
+      if (!res.ok) throw new Error(body.error);
+      ok++;
+    } catch (err) {
+      toast(`${file.name}: ${err.message}`, 'err');
+    }
+  }
+  sftpFileInput.value = '';
+  if (ok > 0) toast(`Uploaded ${ok} file${ok > 1 ? 's' : ''}`, 'ok');
+  loadSftpDir(sftpCwd);
+});
+
+/* ─── API helpers ────────────────────────────────────────────────────────── */
 async function loadKeys(selectedId = '') {
   try {
     const res  = await fetch('/api/keys');
     const body = await res.json();
-
     keyIdInput.innerHTML = '';
     const ph = document.createElement('option');
     ph.value = '';
     ph.textContent = body.keys.length ? '— Select key —' : '— No keys saved —';
     keyIdInput.append(ph);
-
     for (const key of body.keys) {
       const opt = document.createElement('option');
       opt.value = key.id;
@@ -257,7 +539,7 @@ async function loadKeys(selectedId = '') {
   } catch (_) {}
 }
 
-/* ─── UI state helpers ──────────────────────────────────────────────────── */
+/* ─── UI state helpers ───────────────────────────────────────────────────── */
 function openModal() {
   backdrop.classList.add('open');
   connectModal.removeAttribute('hidden');
@@ -273,13 +555,12 @@ function openKeySheet() {
   keySheet.removeAttribute('hidden');
   requestAnimationFrame(() => keySheet.classList.add('open'));
 }
-function closeSheet() {
+function closeKeySheet_fn() {
   keySheet.classList.remove('open');
   setTimeout(() => keySheet.setAttribute('hidden', ''), 320);
 }
 
-function showHud(host) {
-  hudHost.textContent = host;
+function showHud() {
   hud.removeAttribute('hidden');
   requestAnimationFrame(() => {
     hud.classList.add('open');
@@ -290,6 +571,19 @@ function hideHud() {
   hud.classList.remove('open');
   workspace.classList.remove('hud-on');
   setTimeout(() => hud.setAttribute('hidden', ''), 300);
+}
+
+function showTabBar() {
+  tabBar.removeAttribute('hidden');
+  requestAnimationFrame(() => {
+    tabBar.classList.add('open');
+    workspace.classList.add('tabs-on');
+  });
+}
+function hideTabBar() {
+  tabBar.classList.remove('open');
+  workspace.classList.remove('tabs-on');
+  setTimeout(() => tabBar.setAttribute('hidden', ''), 300);
 }
 
 function showMbar() {
@@ -311,7 +605,23 @@ function setConnecting(on) {
   spinner.hidden  = !on;
 }
 
-/* ─── Toast ─────────────────────────────────────────────────────────────── */
+/* ─── Utility ────────────────────────────────────────────────────────────── */
+function fmtSize(bytes) {
+  if (bytes == null) return '';
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1048576) return `${(bytes / 1024).toFixed(1)} KB`;
+  if (bytes < 1073741824) return `${(bytes / 1048576).toFixed(1)} MB`;
+  return `${(bytes / 1073741824).toFixed(1)} GB`;
+}
+
+function escHtml(str) {
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+/* ─── Toast ──────────────────────────────────────────────────────────────── */
 let toastEl, toastTimer;
 function toast(msg, type = '') {
   if (!toastEl) {

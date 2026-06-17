@@ -1,4 +1,5 @@
 .git
 .keys
+.profiles
 node_modules
 *.md
