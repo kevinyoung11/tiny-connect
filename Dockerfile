@@ -12,7 +12,7 @@ RUN pnpm install --frozen-lockfile --prod
 
 COPY . .
 
-ENV PORT=8080
+# PORT is injected by the hosting platform (Render sets it automatically)
 ENV HOST=0.0.0.0
 EXPOSE 8080
 
