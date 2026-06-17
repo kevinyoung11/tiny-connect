@@ -12,6 +12,7 @@ import { WebSocketServer } from 'ws';
 import { buildConnectionConfig } from './connection-config.js';
 import { createKeyStore } from './key-store.js';
 import { createProfileStore } from './profile-store.js';
+import { createSupabaseKeyStore, createSupabaseProfileStore, isSupabaseConfigured } from './supabase-store.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const port = Number(process.env.PORT || 8787);
@@ -21,10 +22,20 @@ const shell = process.env.TERMINAL_SHELL || defaultShell;
 const startupCommand = process.env.STARTUP_COMMAND || '';
 
 const keysDir = process.env.VERCEL ? '/tmp/.keys' : path.join(__dirname, '.keys');
-const keyStore = createKeyStore(keysDir);
-
 const profilesDir = process.env.VERCEL ? '/tmp/.profiles' : path.join(__dirname, '.profiles');
-const profileStore = createProfileStore(profilesDir);
+
+let keyStore, profileStore;
+if (isSupabaseConfigured()) {
+  keyStore = createSupabaseKeyStore(keysDir);
+  profileStore = createSupabaseProfileStore();
+  // init() is async; errors are non-fatal (falls through to file store on individual ops)
+  Promise.all([keyStore.init(), profileStore.init()])
+    .then(() => console.log('[supabase] connected and tables ready'))
+    .catch(err => console.error('[supabase] init failed, file store still available:', err.message));
+} else {
+  keyStore = createKeyStore(keysDir);
+  profileStore = createProfileStore(profilesDir);
+}
 
 // sessionId → { client: ssh2.Client, config }
 const sshSessions = new Map();
@@ -36,36 +47,55 @@ app.use('/xterm', express.static(path.join(__dirname, 'node_modules', '@xterm', 
 app.use('/xterm-fit', express.static(path.join(__dirname, 'node_modules', '@xterm', 'addon-fit')));
 
 /* ── SSH Key endpoints ─────────────────────────────────────────────────────── */
-app.get('/api/keys', (req, res) => {
-  res.json({ keys: keyStore.listKeys() });
+app.get('/api/keys', async (req, res) => {
+  try {
+    const keys = await Promise.resolve(keyStore.listKeys());
+    res.json({ keys });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
 });
 
-app.post('/api/keys', (req, res) => {
+app.post('/api/keys', async (req, res) => {
   try {
-    const key = keyStore.createKey({ name: req.body?.name, privateKey: req.body?.privateKey });
+    const key = await Promise.resolve(keyStore.createKey({ name: req.body?.name, privateKey: req.body?.privateKey }));
     res.status(201).json({ key: { id: key.id, name: key.name } });
   } catch (error) {
     res.status(400).json({ error: error.message });
   }
 });
 
-/* ── Profile endpoints ─────────────────────────────────────────────────────── */
-app.get('/api/profiles', (req, res) => {
-  res.json({ profiles: profileStore.listProfiles() });
+app.delete('/api/keys/:id', async (req, res) => {
+  try {
+    await Promise.resolve(keyStore.deleteKey?.(req.params.id));
+    res.json({ ok: true });
+  } catch (error) {
+    res.status(404).json({ error: error.message });
+  }
 });
 
-app.post('/api/profiles', (req, res) => {
+/* ── Profile endpoints ─────────────────────────────────────────────────────── */
+app.get('/api/profiles', async (req, res) => {
   try {
-    const profile = profileStore.createProfile(req.body || {});
+    const profiles = await Promise.resolve(profileStore.listProfiles());
+    res.json({ profiles });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/profiles', async (req, res) => {
+  try {
+    const profile = await Promise.resolve(profileStore.createProfile(req.body || {}));
     res.status(201).json({ profile });
   } catch (error) {
     res.status(400).json({ error: error.message });
   }
 });
 
-app.delete('/api/profiles/:id', (req, res) => {
+app.delete('/api/profiles/:id', async (req, res) => {
   try {
-    profileStore.deleteProfile(req.params.id);
+    await Promise.resolve(profileStore.deleteProfile(req.params.id));
     res.json({ ok: true });
   } catch (error) {
     res.status(404).json({ error: error.message });

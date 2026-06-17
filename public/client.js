@@ -25,47 +25,49 @@ const TERM_OPTS = {
 };
 
 /* ─── DOM refs ───────────────────────────────────────────────────────────── */
-const backdrop        = document.querySelector('#backdrop');
-const connectModal    = document.querySelector('#connectModal');
-const connectForm     = document.querySelector('#connectForm');
-const connectBtn      = document.querySelector('#connectBtn');
-const btnLabel        = connectBtn.querySelector('.btn-label');
-const spinner         = document.querySelector('#spinner');
-const sshFields       = document.querySelector('#sshFields');
-const hostInput       = document.querySelector('#host');
-const portInput       = document.querySelector('#port');
-const usernameInput   = document.querySelector('#username');
-const keyIdInput      = document.querySelector('#keyId');
-const passphraseInput = document.querySelector('#passphrase');
-const useTmuxInput    = document.querySelector('#useTmux');
-const addKeyBtn       = document.querySelector('#addKeyBtn');
-const keySheet        = document.querySelector('#keySheet');
-const closeKeySheet   = document.querySelector('#closeKeySheet');
-const keyForm         = document.querySelector('#keyForm');
-const keyNameInput    = document.querySelector('#keyName');
-const privateKeyInput = document.querySelector('#privateKey');
-const profileSelect   = document.querySelector('#profileSelect');
-const saveProfileBtn  = document.querySelector('#saveProfileBtn');
-const hud             = document.querySelector('#hud');
-const statusDot       = document.querySelector('#statusDot');
-const hudHost         = document.querySelector('#hudHost');
-const disconnectBtn   = document.querySelector('#disconnectBtn');
-const filesBtn        = document.querySelector('#filesBtn');
-const tabBar          = document.querySelector('#tabBar');
-const tabList         = document.querySelector('#tabList');
-const newTabBtn       = document.querySelector('#newTabBtn');
-const workspace       = document.querySelector('#workspace');
-const termContainer   = document.querySelector('#termContainer');
-const mbar            = document.querySelector('#mbar');
-const cmdForm         = document.querySelector('#cmdForm');
-const cmdInput        = document.querySelector('#cmdInput');
-const pasteBtn        = document.querySelector('#pasteBtn');
-const sftpSheet       = document.querySelector('#sftpSheet');
+const backdrop          = document.querySelector('#backdrop');
+const connectModal      = document.querySelector('#connectModal');
+const connectForm       = document.querySelector('#connectForm');
+const connectBtn        = document.querySelector('#connectBtn');
+const btnLabel          = connectBtn.querySelector('.btn-label');
+const spinner           = document.querySelector('#spinner');
+const sshFields         = document.querySelector('#sshFields');
+const hostInput         = document.querySelector('#host');
+const portInput         = document.querySelector('#port');
+const usernameInput     = document.querySelector('#username');
+const keyIdInput        = document.querySelector('#keyId');
+const passphraseInput   = document.querySelector('#passphrase');
+const useTmuxInput      = document.querySelector('#useTmux');
+const addKeyBtn         = document.querySelector('#addKeyBtn');
+const deleteKeyBtn      = document.querySelector('#deleteKeyBtn');
+const keySheet          = document.querySelector('#keySheet');
+const closeKeySheet     = document.querySelector('#closeKeySheet');
+const keyForm           = document.querySelector('#keyForm');
+const keyNameInput      = document.querySelector('#keyName');
+const privateKeyInput   = document.querySelector('#privateKey');
+const profileSelect     = document.querySelector('#profileSelect');
+const saveProfileBtn    = document.querySelector('#saveProfileBtn');
+const deleteProfileBtn  = document.querySelector('#deleteProfileBtn');
+const hud               = document.querySelector('#hud');
+const statusDot         = document.querySelector('#statusDot');
+const hudHost           = document.querySelector('#hudHost');
+const disconnectBtn     = document.querySelector('#disconnectBtn');
+const filesBtn          = document.querySelector('#filesBtn');
+const tabBar            = document.querySelector('#tabBar');
+const tabList           = document.querySelector('#tabList');
+const newTabBtn         = document.querySelector('#newTabBtn');
+const workspace         = document.querySelector('#workspace');
+const termContainer     = document.querySelector('#termContainer');
+const mbar              = document.querySelector('#mbar');
+const cmdForm           = document.querySelector('#cmdForm');
+const cmdInput          = document.querySelector('#cmdInput');
+const pasteBtn          = document.querySelector('#pasteBtn');
+const sftpSheet         = document.querySelector('#sftpSheet');
 const closeSftpSheetBtn = document.querySelector('#closeSftpSheet');
-const sftpPathEl      = document.querySelector('#sftpPath');
-const sftpListEl      = document.querySelector('#sftpList');
-const sftpUpBtn       = document.querySelector('#sftpUpBtn');
-const sftpFileInput   = document.querySelector('#sftpFileInput');
+const sftpPathEl        = document.querySelector('#sftpPath');
+const sftpListEl        = document.querySelector('#sftpList');
+const sftpUpBtn         = document.querySelector('#sftpUpBtn');
+const sftpFileInput     = document.querySelector('#sftpFileInput');
 
 /* ─── Session class ──────────────────────────────────────────────────────── */
 class Session {
@@ -123,6 +125,7 @@ let sessions      = [];
 let activeSession = null;
 let currentMode   = 'ssh';
 let profilesCache = [];
+let keysCache     = [];
 let sftpCwd       = '.';
 let sftpSessionId = null;
 
@@ -280,11 +283,7 @@ function updateHud() {
   if (!sess) { filesBtn && (filesBtn.hidden = true); return; }
 
   hudHost.textContent = sess.label;
-  if (sess.connected) {
-    statusDot.classList.remove('off');
-  } else {
-    statusDot.classList.add('off');
-  }
+  statusDot.classList.toggle('off', !sess.connected);
   if (filesBtn) filesBtn.hidden = !(sess.connected && sess.sshSessionId);
 }
 
@@ -348,6 +347,23 @@ keyForm.addEventListener('submit', async e => {
   }
 });
 
+/* ─── Delete key ─────────────────────────────────────────────────────────── */
+deleteKeyBtn?.addEventListener('click', async () => {
+  const id = keyIdInput.value;
+  if (!id) return;
+  const key = keysCache.find(k => k.id === id);
+  if (!confirm(`Delete key "${key?.name || id}"?`)) return;
+  try {
+    const res = await fetch(`/api/keys/${encodeURIComponent(id)}`, { method: 'DELETE' });
+    const body = await res.json();
+    if (!res.ok) throw new Error(body.error || 'Delete failed');
+    await loadKeys();
+    toast('Key deleted', 'ok');
+  } catch (err) {
+    toast(err.message, 'err');
+  }
+});
+
 /* ─── Profile management ─────────────────────────────────────────────────── */
 async function loadProfiles() {
   try {
@@ -371,18 +387,20 @@ function renderProfileSelect() {
     opt.textContent = p.name;
     profileSelect.append(opt);
   }
+  if (deleteProfileBtn) deleteProfileBtn.hidden = true;
 }
 
 profileSelect?.addEventListener('change', () => {
   const profile = profilesCache.find(p => p.id === profileSelect.value);
+  if (deleteProfileBtn) deleteProfileBtn.hidden = !profile;
   if (!profile) return;
   currentMode = 'ssh';
   renderModeTabs();
   hostInput.value     = profile.host || '';
   portInput.value     = profile.port || '22';
   usernameInput.value = profile.username || '';
-  if (profile.keyId) keyIdInput.value = profile.keyId;
-  profileSelect.value = '';
+  const keyId = profile.keyId || profile.key_id;
+  if (keyId) keyIdInput.value = keyId;
 });
 
 saveProfileBtn?.addEventListener('click', async () => {
@@ -394,7 +412,7 @@ saveProfileBtn?.addEventListener('click', async () => {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        name: name.trim(),
+        name:     name.trim(),
         host:     hostInput.value.trim(),
         port:     portInput.value || '22',
         username: usernameInput.value.trim(),
@@ -404,7 +422,28 @@ saveProfileBtn?.addEventListener('click', async () => {
     const body = await res.json();
     if (!res.ok) throw new Error(body.error || 'Save failed');
     await loadProfiles();
+    // Select the newly created profile
+    if (body.profile?.id) {
+      profileSelect.value = body.profile.id;
+      if (deleteProfileBtn) deleteProfileBtn.hidden = false;
+    }
     toast('Profile saved', 'ok');
+  } catch (err) {
+    toast(err.message, 'err');
+  }
+});
+
+deleteProfileBtn?.addEventListener('click', async () => {
+  const id = profileSelect.value;
+  if (!id) return;
+  const profile = profilesCache.find(p => p.id === id);
+  if (!confirm(`Delete profile "${profile?.name || id}"?`)) return;
+  try {
+    const res = await fetch(`/api/profiles/${encodeURIComponent(id)}`, { method: 'DELETE' });
+    const body = await res.json();
+    if (!res.ok) throw new Error(body.error || 'Delete failed');
+    await loadProfiles();
+    toast('Profile deleted', 'ok');
   } catch (err) {
     toast(err.message, 'err');
   }
@@ -524,20 +563,26 @@ async function loadKeys(selectedId = '') {
   try {
     const res  = await fetch('/api/keys');
     const body = await res.json();
+    keysCache = body.keys || [];
     keyIdInput.innerHTML = '';
     const ph = document.createElement('option');
     ph.value = '';
-    ph.textContent = body.keys.length ? '— Select key —' : '— No keys saved —';
+    ph.textContent = keysCache.length ? '— Select key —' : '— No keys saved —';
     keyIdInput.append(ph);
-    for (const key of body.keys) {
+    for (const key of keysCache) {
       const opt = document.createElement('option');
       opt.value = key.id;
       opt.textContent = key.name;
       keyIdInput.append(opt);
     }
     if (selectedId) keyIdInput.value = selectedId;
+    if (deleteKeyBtn) deleteKeyBtn.hidden = !keyIdInput.value;
   } catch (_) {}
 }
+
+keyIdInput?.addEventListener('change', () => {
+  if (deleteKeyBtn) deleteKeyBtn.hidden = !keyIdInput.value;
+});
 
 /* ─── UI state helpers ───────────────────────────────────────────────────── */
 function openModal() {

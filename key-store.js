@@ -46,6 +46,16 @@ export function createKeyStore(directory) {
         throw new Error(`key not found: ${cleanId}`);
       }
       return key.privateKeyPath;
+    },
+
+    deleteKey(id) {
+      const cleanId = requiredString(id, 'keyId');
+      const keys = readMetadata();
+      const idx = keys.findIndex(k => k.id === cleanId);
+      if (idx === -1) throw new Error(`key not found: ${cleanId}`);
+      const [removed] = keys.splice(idx, 1);
+      try { fs.unlinkSync(removed.privateKeyPath); } catch (_) {}
+      writeMetadata(keys);
     }
   };
 }
