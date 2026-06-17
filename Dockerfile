@@ -5,14 +5,11 @@ RUN apk add --no-cache python3
 
 WORKDIR /app
 
-RUN corepack enable
-
-COPY package.json pnpm-lock.yaml ./
-RUN pnpm install --frozen-lockfile --prod
+COPY package.json package-lock.json ./
+RUN npm ci --omit=dev --ignore-scripts
 
 COPY . .
 
-ENV PORT=8080
 ENV HOST=0.0.0.0
 EXPOSE 8080
 
