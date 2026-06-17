@@ -164,6 +164,57 @@ label {
 .btn-icon--danger { color: rgba(255,95,87,.6); }
 .btn-icon--danger:hover { background: rgba(255,95,87,.1); border-color: rgba(255,95,87,.35); color: var(--danger); }
 
+/* Inline profile save panel */
+.profile-save-panel {
+  display: flex; gap: 6px; align-items: center;
+  margin-bottom: 14px;
+  animation: slideDown .18s ease;
+}
+.profile-save-panel[hidden] { display: none; }
+.profile-save-panel input {
+  flex: 1; height: 40px;
+  border-color: var(--accent);
+  background: var(--accent-glow);
+  font-size: 14px;
+}
+.btn-save-confirm {
+  height: 40px; padding: 0 16px; flex: none;
+  border: none; border-radius: var(--r);
+  background: var(--accent);
+  color: #050810;
+  font-size: 13px; font-weight: 650;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: opacity .15s, transform .1s;
+  touch-action: manipulation;
+}
+.btn-save-confirm:hover  { opacity: .88; }
+.btn-save-confirm:active { transform: scale(.96); }
+.btn-save-cancel {
+  width: 40px; height: 40px; flex: none;
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  background: var(--surf);
+  color: var(--text-2);
+  font-size: 14px;
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: background .12s, color .12s;
+  touch-action: manipulation;
+}
+.btn-save-cancel:hover { background: var(--surf-hi); color: var(--text); }
+@keyframes slideDown {
+  from { opacity: 0; transform: translateY(-6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes fieldFlash {
+  0%   { border-color: var(--accent); background: var(--accent-glow); }
+  100% { border-color: var(--border); background: var(--surf); }
+}
+.field-flash {
+  animation: fieldFlash .6s ease forwards;
+}
+
 /* Mode tabs */
 .mode-tabs {
   display: flex; gap: 3px;

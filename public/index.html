@@ -36,7 +36,7 @@
         <!-- Saved profiles -->
         <div class="profile-row">
           <select id="profileSelect"></select>
-          <button type="button" class="btn-icon" id="saveProfileBtn" title="Save profile">
+          <button type="button" class="btn-icon" id="saveProfileBtn" title="Save as profile">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
               <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
               <polyline points="17 21 17 13 7 13 7 21"/>
@@ -51,6 +51,12 @@
               <path d="M9 6V4h6v2"/>
             </svg>
           </button>
+        </div>
+        <!-- Inline profile save panel (replaces prompt()) -->
+        <div class="profile-save-panel" id="profileSavePanel" hidden>
+          <input id="profileNameInput" type="text" placeholder="Profile name, e.g. My Server" autocapitalize="words" autocorrect="off" />
+          <button type="button" class="btn-save-confirm" id="profileSaveConfirm">Save</button>
+          <button type="button" class="btn-save-cancel" id="profileSaveCancel">✕</button>
         </div>
 
         <div class="mode-tabs" role="tablist">

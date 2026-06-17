@@ -48,6 +48,10 @@ const privateKeyInput   = document.querySelector('#privateKey');
 const profileSelect     = document.querySelector('#profileSelect');
 const saveProfileBtn    = document.querySelector('#saveProfileBtn');
 const deleteProfileBtn  = document.querySelector('#deleteProfileBtn');
+const profileSavePanel  = document.querySelector('#profileSavePanel');
+const profileNameInput  = document.querySelector('#profileNameInput');
+const profileSaveConfirm = document.querySelector('#profileSaveConfirm');
+const profileSaveCancel = document.querySelector('#profileSaveCancel');
 const hud               = document.querySelector('#hud');
 const statusDot         = document.querySelector('#statusDot');
 const hudHost           = document.querySelector('#hudHost');
@@ -379,20 +383,24 @@ function renderProfileSelect() {
   profileSelect.innerHTML = '';
   const ph = document.createElement('option');
   ph.value = '';
-  ph.textContent = profilesCache.length ? '— Load profile —' : '— No profiles —';
+  ph.textContent = profilesCache.length ? '— Saved connections —' : '— No saved connections —';
   profileSelect.append(ph);
   for (const p of profilesCache) {
     const opt = document.createElement('option');
     opt.value = p.id;
-    opt.textContent = p.name;
+    // Show name + host so user sees where it connects at a glance
+    const host = p.host ? ` · ${p.username ? p.username + '@' : ''}${p.host}` : '';
+    opt.textContent = p.name + host;
     profileSelect.append(opt);
   }
   if (deleteProfileBtn) deleteProfileBtn.hidden = true;
+  hideSavePanel();
 }
 
 profileSelect?.addEventListener('change', () => {
   const profile = profilesCache.find(p => p.id === profileSelect.value);
   if (deleteProfileBtn) deleteProfileBtn.hidden = !profile;
+  hideSavePanel();
   if (!profile) return;
   currentMode = 'ssh';
   renderModeTabs();
@@ -401,18 +409,51 @@ profileSelect?.addEventListener('change', () => {
   usernameInput.value = profile.username || '';
   const keyId = profile.keyId || profile.key_id;
   if (keyId) keyIdInput.value = keyId;
+  // Briefly highlight the filled fields
+  [hostInput, portInput, usernameInput].forEach(el => {
+    el.classList.add('field-flash');
+    setTimeout(() => el.classList.remove('field-flash'), 600);
+  });
 });
 
-saveProfileBtn?.addEventListener('click', async () => {
-  if (currentMode !== 'ssh') { toast('Profiles are for SSH only', 'err'); return; }
-  const name = prompt('Profile name:');
-  if (!name?.trim()) return;
+/* ─── Inline profile save panel ──────────────────────────────────────────── */
+function showSavePanel() {
+  if (currentMode !== 'ssh') { toast('Profiles are for SSH connections', 'err'); return; }
+  // Pre-fill a sensible name from current form values
+  const suggested = [usernameInput.value.trim(), hostInput.value.trim()]
+    .filter(Boolean).join('@') || '';
+  profileNameInput.value = suggested;
+  profileSavePanel.removeAttribute('hidden');
+  profileNameInput.focus();
+  profileNameInput.select();
+}
+
+function hideSavePanel() {
+  profileSavePanel.setAttribute('hidden', '');
+  profileNameInput.value = '';
+}
+
+saveProfileBtn?.addEventListener('click', () => {
+  if (profileSavePanel.hidden) showSavePanel(); else hideSavePanel();
+});
+
+profileSaveCancel?.addEventListener('click', hideSavePanel);
+
+profileNameInput?.addEventListener('keydown', e => {
+  if (e.key === 'Escape') hideSavePanel();
+});
+
+async function doSaveProfile() {
+  const name = profileNameInput.value.trim();
+  if (!name) { profileNameInput.focus(); return; }
+  profileSaveConfirm.disabled = true;
+  profileSaveConfirm.textContent = '…';
   try {
     const res = await fetch('/api/profiles', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        name:     name.trim(),
+        name,
         host:     hostInput.value.trim(),
         port:     portInput.value || '22',
         username: usernameInput.value.trim(),
@@ -422,15 +463,22 @@ saveProfileBtn?.addEventListener('click', async () => {
     const body = await res.json();
     if (!res.ok) throw new Error(body.error || 'Save failed');
     await loadProfiles();
-    // Select the newly created profile
     if (body.profile?.id) {
       profileSelect.value = body.profile.id;
       if (deleteProfileBtn) deleteProfileBtn.hidden = false;
     }
-    toast('Profile saved', 'ok');
+    toast(`Saved "${name}"`, 'ok');
   } catch (err) {
     toast(err.message, 'err');
+  } finally {
+    profileSaveConfirm.disabled = false;
+    profileSaveConfirm.textContent = 'Save';
   }
+}
+
+profileSaveConfirm?.addEventListener('click', doSaveProfile);
+profileNameInput?.addEventListener('keydown', e => {
+  if (e.key === 'Enter') { e.preventDefault(); doSaveProfile(); }
 });
 
 deleteProfileBtn?.addEventListener('click', async () => {
