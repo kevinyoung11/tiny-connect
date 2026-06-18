@@ -1,6 +1,6 @@
 # TinyConnect
 
-手机浏览器使用的 Web SSH terminal，支持 SSH key 管理、保存主机、多 tab、SFTP、tmux、复制模式和断线重连。
+手机浏览器使用的 Web SSH terminal，支持 SSH key 管理、保存主机、多 tab、SFTP、tmux、复制模式、断线重连和设备绑定。
 
 ## 启动
 
@@ -28,7 +28,7 @@ LAN: http://你的电脑局域网IP:8789
 - SSH key 按设备用户保存到 Supabase。
 - 本地私钥缓存按用户隔离在 `.keys/<userId>/<keyId>.pem`。
 - Saved Hosts 保存 host、port、username、key、passphrase 和 tmux 选项。
-- Saved tab 用来选择已保存主机。
+- 同名 Saved Host 会覆盖旧配置。
 
 ## Settings
 
@@ -41,34 +41,9 @@ Settings 中可配置：
 - Startup habits：按优先级保存启动命令，例如 `cd ~/project && codex`。
 - Device pairing：老设备生成 6 位码，新设备输入后绑定到同一个用户。
 
+设备绑定码保存在现有 `tiny_connect_user_settings.settings.devicePairing` JSON 中，不需要新增 Supabase 表。
+
 注意：浏览器或部署平台仍可能被系统回收。长期任务建议开启 tmux。
-
-## Supabase Migration
-
-如果部署环境不能直连 Postgres 自动建表，在 Supabase SQL editor 手动执行：
-
-```sql
-CREATE TABLE IF NOT EXISTS device_pairing_codes (
-  code       TEXT PRIMARY KEY,
-  user_id    TEXT NOT NULL REFERENCES app_users(id) ON DELETE CASCADE,
-  expires_at TIMESTAMPTZ NOT NULL,
-  used_at    TIMESTAMPTZ,
-  created_at TIMESTAMPTZ DEFAULT NOW()
-);
-
-CREATE INDEX IF NOT EXISTS device_pairing_codes_user_idx
-ON device_pairing_codes(user_id, created_at DESC);
-
-ALTER TABLE device_pairing_codes ENABLE ROW LEVEL SECURITY;
-DROP POLICY IF EXISTS "device_pairing_codes_client_select" ON device_pairing_codes;
-DROP POLICY IF EXISTS "device_pairing_codes_client_insert" ON device_pairing_codes;
-DROP POLICY IF EXISTS "device_pairing_codes_client_update" ON device_pairing_codes;
-DROP POLICY IF EXISTS "device_pairing_codes_client_delete" ON device_pairing_codes;
-CREATE POLICY "device_pairing_codes_client_select" ON device_pairing_codes FOR SELECT TO anon, authenticated USING (true);
-CREATE POLICY "device_pairing_codes_client_insert" ON device_pairing_codes FOR INSERT TO anon, authenticated WITH CHECK (true);
-CREATE POLICY "device_pairing_codes_client_update" ON device_pairing_codes FOR UPDATE TO anon, authenticated USING (true) WITH CHECK (true);
-CREATE POLICY "device_pairing_codes_client_delete" ON device_pairing_codes FOR DELETE TO anon, authenticated USING (true);
-```
 
 ## 终端操作
 
