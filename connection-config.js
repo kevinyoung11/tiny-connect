@@ -1,5 +1,6 @@
 import os from 'node:os';
 import path from 'node:path';
+import { normalizeSettings } from './settings.js';
 
 export function buildConnectionConfig(input = {}, options = {}) {
   const mode = input.mode || 'local';
@@ -29,6 +30,7 @@ export function buildConnectionConfig(input = {}, options = {}) {
     privateKeyPath: expandHome(privateKeyPath),
     passphrase: typeof input.passphrase === 'string' ? input.passphrase : '',
     tmux: input.tmux === true,
+    settings: normalizeSettings(input.settings || {}),
   };
 }
 

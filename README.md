@@ -1,10 +1,15 @@
-# YY Terminal
+# TinyConnect
 
-手机浏览器控制当前电脑终端的最小可运行版本。
+手机浏览器使用的 Web SSH terminal，支持 SSH key 管理、保存主机、多 tab、SFTP、tmux、复制模式和断线重连。
 
 ## 启动
 
+需要 Supabase 配置：
+
 ```bash
+export SUPABASE_URL="https://你的项目.supabase.co"
+export SUPABASE_SERVICE_ROLE_KEY="你的 service role key"
+export Direct_Link="postgresql://..."
 npm install
 PORT=8789 npm start
 ```
@@ -12,46 +17,39 @@ PORT=8789 npm start
 启动后终端会打印：
 
 ```text
-yy-terminal listening on http://localhost:8789
+tiny-connect listening on http://localhost:8789
 LAN: http://你的电脑局域网IP:8789
 ```
 
 手机和电脑连同一个 Wi-Fi，用手机浏览器打开 `LAN` 地址。
 
-## SSH 私钥连接
+## SSH Key 和 Saved Hosts
 
-打开页面后，先保存私钥：
+- SSH key 按设备用户保存到 Supabase。
+- 本地私钥缓存按用户隔离在 `.keys/<userId>/<keyId>.pem`。
+- Saved Hosts 保存 host、port、username、key、passphrase 和 tmux 选项。
+- Saved tab 用来选择已保存主机。
 
-1. 连接模式选择 `SSH`
-2. 在 Key name 输入一个名字，例如 `prod`
-3. 在 Paste private key 粘贴私钥内容
-4. 点 `Save Key`
+## Settings
 
-然后连接 SSH：
+Settings 中可配置：
 
-- `Host`：远程机器 IP 或域名
-- `Port`：默认 `22`
-- `Username`：远程用户名
-- 选择刚保存的 key
-- `Passphrase`：私钥密码，没有就留空
+- Font size：终端字体大小。
+- Keepalive interval：SSH keepalive 间隔。
+- Disconnect timeout：手机断开后服务端保留 SSH session 的时间，支持 `Never`。
+- Auto reconnect：手机浏览器回来后自动重连到保留的 session。
 
-注意：私钥会保存到本机项目目录的 `.keys/`，文件权限是 `0600`。列表接口只返回 key 的 `id` 和名字，不返回私钥内容。
+注意：浏览器或部署平台仍可能被系统回收。长期任务建议开启 tmux。
 
-## 直接进入 tmux
+## 终端操作
 
-```bash
-PORT=8789 STARTUP_COMMAND="tmux new -A -s codex" npm start
-```
-
-进入后可以运行：
-
-```bash
-codex
-```
+- HUD 和底部快捷栏支持 Paste。
+- Copy Mode 会把当前 terminal buffer 展开成可选择文本，方便手机浏览器长按选择复制。
+- Files 打开当前 SSH session 的 SFTP 文件浏览器，支持上传和下载。
 
 ## 常用环境变量
 
 - `PORT=8787`：修改端口
 - `HOST=0.0.0.0`：监听地址
-- `TERMINAL_SHELL=/bin/zsh`：指定 shell
+- `TERMINAL_SHELL=/bin/zsh`：本地模式 shell
 - `STARTUP_COMMAND="tmux new -A -s codex"`：连接后自动执行命令

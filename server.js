@@ -16,6 +16,7 @@ import {
   createSupabaseUserStore,
   isSupabaseConfigured
 } from './supabase-store.js';
+import { disconnectTimeoutToMs, normalizeSettings } from './settings.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const port = Number(process.env.PORT || 8787);
@@ -34,7 +35,7 @@ const keyStore = createSupabaseKeyStore(keysDir);
 const profileStore = createSupabaseProfileStore();
 const userStore = createSupabaseUserStore();
 
-// sessionId → { client: ssh2.Client, config }
+// sessionId → { client, config, stream, ws, cleanupTimer, settings }
 const sshSessions = new Map();
 
 const app = express();
@@ -112,7 +113,7 @@ app.delete('/api/profiles/:id', async (req, res) => {
 app.get('/api/settings', async (req, res) => {
   try {
     const scope = await getRequestScope(req);
-    const settings = await userStore.getUserSettings(scope);
+    const settings = normalizeSettings(await userStore.getUserSettings(scope));
     res.json({ settings });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -122,7 +123,10 @@ app.get('/api/settings', async (req, res) => {
 app.post('/api/settings', async (req, res) => {
   try {
     const scope = await getRequestScope(req);
-    const settings = await userStore.saveUserSettings({ ...scope, settings: req.body?.settings || {} });
+    const settings = await userStore.saveUserSettings({
+      ...scope,
+      settings: normalizeSettings(req.body?.settings || {})
+    });
     res.json({ settings });
   } catch (error) {
     res.status(400).json({ error: error.message });
@@ -134,6 +138,14 @@ async function getRequestScope(req) {
   const user = await userStore.ensureUserForDevice({
     deviceFingerprint,
     userAgent: req.get('user-agent') || ''
+  });
+  return { userId: user.id };
+}
+
+async function getSocketScope(message) {
+  const user = await userStore.ensureUserForDevice({
+    deviceFingerprint: message.deviceFingerprint,
+    userAgent: 'websocket'
   });
   return { userId: user.id };
 }
@@ -221,23 +233,38 @@ function createTerminal(ws) {
     if (message.type === 'connect' && !connected) {
       clearTimeout(fallbackTimer);
       connected = true;
-      try {
-        const config = buildConnectionConfig(message.config || {}, {
-          resolveKeyPath: (keyId) => keyStore.getPrivateKeyPath(keyId)
+      connectTransport(ws, message)
+        .then((nextTransport) => { transport = nextTransport; })
+        .catch((error) => {
+          sendData(ws, `Connection configuration error: ${error.message}\r\n`);
+          ws.close();
         });
-        if (config.mode === 'ssh') {
-          transport = createSshTransport(ws, config);
-        } else {
-          transport = createLocalTransport(ws, { tmux: message.config?.tmux === true });
-        }
-      } catch (error) {
-        sendData(ws, `Connection configuration error: ${error.message}\r\n`);
+      return;
+    }
+
+    if (message.type === 'reconnect' && !connected) {
+      clearTimeout(fallbackTimer);
+      connected = true;
+      const session = sshSessions.get(message.sessionId);
+      if (!session) {
+        sendData(ws, 'Reconnect failed: session not found\r\n');
         ws.close();
+        return;
       }
+      clearTimeout(session.cleanupTimer);
+      session.ws = ws;
+      transport = createAttachedSshTransport(ws, message.sessionId, session);
+      ws.send(JSON.stringify({ type: 'session', id: message.sessionId }));
+      sendData(ws, `Reconnected to ${session.config.username}@${session.config.host}\r\n`);
       return;
     }
 
     if (!transport) return;
+
+    if (message.type === 'close') {
+      transport.close({ force: true });
+      return;
+    }
 
     if (message.type === 'input' && typeof message.data === 'string') {
       transport.input(message.data);
@@ -255,6 +282,20 @@ function createTerminal(ws) {
     clearTimeout(fallbackTimer);
     if (transport) transport.close();
   });
+}
+
+async function connectTransport(ws, message) {
+  const scope = await getSocketScope(message);
+  const config = buildConnectionConfig(message.config || {}, {
+    resolveKeyPath: (keyId) => `managed-key:${keyId}`
+  });
+  if (config.privateKeyPath?.startsWith('managed-key:')) {
+    const keyId = config.privateKeyPath.slice('managed-key:'.length);
+    config.privateKeyPath = await keyStore.getPrivateKeyPath(keyId, scope);
+  }
+  return config.mode === 'ssh'
+    ? createSshTransport(ws, config)
+    : createLocalTransport(ws, { tmux: message.config?.tmux === true });
 }
 
 function createLocalTransport(ws, config) {
@@ -291,9 +332,10 @@ function createSshTransport(ws, config) {
   const sessionId = randomUUID();
   const client = new Client();
   let stream = null;
+  const settings = normalizeSettings(config.settings || {});
 
   client.on('ready', () => {
-    sshSessions.set(sessionId, { client, config });
+    sshSessions.set(sessionId, { client, config, stream: null, ws, cleanupTimer: null, settings });
     if (ws.readyState === ws.OPEN) {
       ws.send(JSON.stringify({ type: 'session', id: sessionId }));
     }
@@ -311,12 +353,22 @@ function createSshTransport(ws, config) {
         return;
       }
       stream = shellStream;
-      stream.on('data', (data) => sendData(ws, data.toString('utf8')));
-      stream.stderr.on('data', (data) => sendData(ws, data.toString('utf8')));
+      const session = sshSessions.get(sessionId);
+      if (session) session.stream = stream;
+      stream.on('data', (data) => {
+        const session = sshSessions.get(sessionId);
+        if (session?.ws) sendData(session.ws, data.toString('utf8'));
+      });
+      stream.stderr.on('data', (data) => {
+        const session = sshSessions.get(sessionId);
+        if (session?.ws) sendData(session.ws, data.toString('utf8'));
+      });
       stream.on('close', () => {
+        const session = sshSessions.get(sessionId);
+        if (session?.cleanupTimer) clearTimeout(session.cleanupTimer);
         sshSessions.delete(sessionId);
         client.end();
-        sendExit(ws, 0);
+        if (session?.ws) sendExit(session.ws, 0);
       });
 
       if (config.tmux) {
@@ -341,7 +393,7 @@ function createSshTransport(ws, config) {
       privateKey: fs.readFileSync(config.privateKeyPath),
       passphrase: config.passphrase || undefined,
       readyTimeout: 20000,
-      keepaliveInterval: 30000
+      keepaliveInterval: config.settings.keepaliveIntervalSeconds * 1000
     });
   } catch (error) {
     sendData(ws, `SSH setup failed: ${error.message}\r\n`);
@@ -351,12 +403,47 @@ function createSshTransport(ws, config) {
   return {
     input(data) { if (stream) stream.write(data); },
     resize(cols, rows) { if (stream) stream.setWindow(rows, cols, 0, 0); },
-    close() {
-      sshSessions.delete(sessionId);
-      if (stream) stream.close();
-      client.end();
+    close(options = {}) {
+      if (options.force) closeSshSessionNow(sessionId);
+      else detachOrCloseSshSession(sessionId);
     }
   };
+}
+
+function createAttachedSshTransport(ws, sessionId, session) {
+  return {
+    input(data) { if (session.stream) session.stream.write(data); },
+    resize(cols, rows) { if (session.stream) session.stream.setWindow(rows, cols, 0, 0); },
+    close(options = {}) {
+      if (options.force) closeSshSessionNow(sessionId);
+      else detachOrCloseSshSession(sessionId);
+    }
+  };
+}
+
+function closeSshSessionNow(sessionId) {
+  const session = sshSessions.get(sessionId);
+  if (!session) return;
+  clearTimeout(session.cleanupTimer);
+  sshSessions.delete(sessionId);
+  if (session.stream) session.stream.close();
+  session.client.end();
+}
+
+function detachOrCloseSshSession(sessionId) {
+  const session = sshSessions.get(sessionId);
+  if (!session) return;
+  session.ws = null;
+  const timeoutMs = disconnectTimeoutToMs(session.settings.disconnectTimeout);
+  if (timeoutMs === null) return;
+  clearTimeout(session.cleanupTimer);
+  session.cleanupTimer = setTimeout(() => {
+    const latest = sshSessions.get(sessionId);
+    if (!latest || latest.ws) return;
+    sshSessions.delete(sessionId);
+    if (latest.stream) latest.stream.close();
+    latest.client.end();
+  }, timeoutMs);
 }
 
 wss.on('connection', createTerminal);

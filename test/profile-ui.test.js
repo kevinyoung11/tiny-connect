@@ -21,7 +21,7 @@ test('connection modal uses Saved tab instead of top profile action buttons', ()
   assert.ok(html.indexOf('id="deleteProfileBtn"') > html.indexOf('id="profileSelect"'));
 });
 
-test('renders saved profiles with a placeholder and host context', () => {
+test('renders saved hosts with a placeholder and host context', () => {
   const select = createSelect();
 
   renderProfileOptions(select, [
@@ -30,7 +30,7 @@ test('renders saved profiles with a placeholder and host context', () => {
 
   assert.equal(select.children.length, 2);
   assert.equal(select.children[0].value, '');
-  assert.equal(select.children[0].textContent, '— Saved connections —');
+  assert.equal(select.children[0].textContent, '— Saved hosts —');
   assert.equal(select.children[1].value, 'profile_1');
   assert.equal(select.children[1].textContent, 'Prod · deploy@prod.example.com');
 });

@@ -39,6 +39,12 @@ export function getDatabaseUrl() {
   return process.env.Direct_Link || process.env.DIRECT_URL || process.env.DATABASE_URL || '';
 }
 
+export function resolveScopedKeyPath(localDir, userId, keyId) {
+  if (!userId || typeof userId !== 'string') throw new Error('userId is required');
+  if (!keyId || typeof keyId !== 'string') throw new Error('keyId is required');
+  return path.join(localDir, userId, `${keyId}.pem`);
+}
+
 /* ── Table init ─────────────────────────────────────────────────────────── */
 
 const _readyPools = new WeakSet();
@@ -241,20 +247,19 @@ export function createSupabaseUserStore() {
 export function createSupabaseKeyStore(localDir) {
   fs.mkdirSync(localDir, { recursive: true, mode: 0o700 });
 
-  function localPath(id) { return path.join(localDir, `${id}.pem`); }
+  function localPath(userId, id) {
+    return resolveScopedKeyPath(localDir, userId, id);
+  }
 
-  function syncLocalKey(id, privateKey) {
-    const fp = localPath(id);
+  function syncLocalKey(userId, id, privateKey) {
+    const fp = localPath(userId, id);
+    fs.mkdirSync(path.dirname(fp), { recursive: true, mode: 0o700 });
     if (!fs.existsSync(fp)) fs.writeFileSync(fp, privateKey, { mode: 0o600 });
   }
 
   return {
     async init() {
       await ensureTables();
-      const result = await sb().from('ssh_keys').select('id, private_key');
-      if (!result.error && result.data) {
-        for (const row of result.data) syncLocalKey(row.id, row.private_key);
-      }
     },
 
     async createKey({ userId, name, privateKey }) {
@@ -266,7 +271,7 @@ export function createSupabaseKeyStore(localDir) {
         await sb().from('ssh_keys').insert({ id, user_id: userId, name: name.trim(), private_key: privateKey.trim() }),
         'insert ssh_keys'
       );
-      syncLocalKey(id, privateKey.trim());
+      syncLocalKey(userId, id, privateKey.trim());
       return { id, name: name.trim() };
     },
 
@@ -290,12 +295,20 @@ export function createSupabaseKeyStore(localDir) {
         .maybeSingle();
       if (result.error) throw new Error(result.error.message);
       if (!result.data) throw new Error('Key not found');
-      try { fs.unlinkSync(localPath(id)); } catch (_) {}
+      try { fs.unlinkSync(localPath(userId, id)); } catch (_) {}
     },
 
-    getPrivateKeyPath(id) {
-      const fp = localPath(id);
-      if (!fs.existsSync(fp)) throw new Error(`Key file not found locally for id: ${id}`);
+    async getPrivateKeyPath(id, options = {}) {
+      const userId = requireUserId(options);
+      const result = await sb().from('ssh_keys')
+        .select('private_key')
+        .eq('id', id)
+        .eq('user_id', userId)
+        .maybeSingle();
+      if (result.error) throw new Error(result.error.message);
+      if (!result.data) throw new Error('Key not found');
+      syncLocalKey(userId, id, result.data.private_key);
+      const fp = localPath(userId, id);
       return fp;
     }
   };

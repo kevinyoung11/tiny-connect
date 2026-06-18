@@ -3,6 +3,7 @@ import path from 'node:path';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { buildConnectionConfig } from '../connection-config.js';
+import { defaultSettings } from '../settings.js';
 
 test('builds a local connection when no mode is provided', () => {
   assert.deepEqual(buildConnectionConfig({}), {
@@ -25,7 +26,8 @@ test('builds ssh config with default port and expanded private key path', () => 
     username: 'deploy',
     privateKeyPath: path.join(os.homedir(), '.ssh/id_ed25519'),
     passphrase: '',
-    tmux: false
+    tmux: false,
+    settings: defaultSettings
   });
 });
 

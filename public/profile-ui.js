@@ -6,7 +6,7 @@ export function renderProfileOptions(profileSelect, profiles) {
     profileSelect.children.length = 0;
   }
 
-  const placeholder = createOption('', profiles.length ? '— Saved connections —' : '— No saved connections —');
+  const placeholder = createOption('', profiles.length ? '— Saved hosts —' : '— No saved hosts —');
   profileSelect.append(placeholder);
 
   for (const profile of profiles) {

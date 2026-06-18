@@ -30,6 +30,12 @@
           <h1 class="modal-title">TinyConnect</h1>
           <p class="modal-sub">SSH Terminal</p>
         </div>
+        <button type="button" class="btn-icon modal-settings" id="modalSettingsBtn" title="Settings">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="3"/>
+            <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1A2 2 0 1 1 4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.6-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9l-.1-.1A2 2 0 1 1 7 4.2l.1.1a1.7 1.7 0 0 0 1.9.3h.1a1.7 1.7 0 0 0 1-1.6V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1A2 2 0 1 1 19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9v.1a1.7 1.7 0 0 0 1.6 1h.1a2 2 0 1 1 0 4H21a1.7 1.7 0 0 0-1.6 1z"/>
+          </svg>
+        </button>
       </div>
 
       <form id="connectForm" autocomplete="off" novalidate>
@@ -40,10 +46,10 @@
 
         <div class="saved-panel" id="savedPanel" hidden>
           <div class="field" style="flex:1">
-            <label for="profileSelect">Saved Connections</label>
+            <label for="profileSelect">Saved Hosts</label>
             <select id="profileSelect"></select>
           </div>
-          <button type="button" class="btn-icon btn-icon--danger" id="deleteProfileBtn" title="Delete profile" hidden>
+          <button type="button" class="btn-icon btn-icon--danger" id="deleteProfileBtn" title="Delete saved host" hidden>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
               <polyline points="3 6 5 6 21 6"/>
               <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
@@ -90,7 +96,7 @@
             <input id="passphrase" type="password" placeholder="••••••••" />
           </div>
           <div class="profile-save-panel" id="profileSavePanel">
-            <input id="profileNameInput" type="text" placeholder="Profile name, e.g. My Server" autocapitalize="words" autocorrect="off" />
+            <input id="profileNameInput" type="text" placeholder="Host name, e.g. My Server" autocapitalize="words" autocorrect="off" />
             <button type="button" class="btn-save-confirm" id="profileSaveConfirm">Save</button>
             <button type="button" class="btn-save-cancel" id="profileSaveCancel">✕</button>
           </div>
@@ -107,6 +113,52 @@
           <span class="btn-label">Connect</span>
           <span class="spinner" id="spinner" hidden></span>
         </button>
+      </form>
+    </div>
+
+    <!-- Settings sheet -->
+    <div class="sheet" id="settingsSheet" role="dialog" aria-modal="true" aria-label="Settings" hidden>
+      <div class="sheet-handle"></div>
+      <div class="sheet-head">
+        <h2 class="sheet-title">Settings</h2>
+        <button type="button" class="btn-x" id="closeSettingsSheet" aria-label="Close">
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
+            <path d="M1.5 1.5l9 9M10.5 1.5l-9 9" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+          </svg>
+        </button>
+      </div>
+      <form id="settingsForm" autocomplete="off">
+        <div class="field">
+          <label for="fontSizeInput">Font size</label>
+          <input id="fontSizeInput" type="range" min="12" max="24" step="1" />
+          <span class="range-value" id="fontSizeValue">14</span>
+        </div>
+        <div class="field">
+          <label for="keepaliveInput">Keepalive interval</label>
+          <select id="keepaliveInput">
+            <option value="10">10 seconds</option>
+            <option value="30">30 seconds</option>
+            <option value="60">1 minute</option>
+            <option value="300">5 minutes</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="disconnectTimeoutInput">Disconnect timeout</label>
+          <select id="disconnectTimeoutInput">
+            <option value="5m">5 minutes</option>
+            <option value="30m">30 minutes</option>
+            <option value="2h">2 hours</option>
+            <option value="never">Never</option>
+          </select>
+        </div>
+        <div class="field field--toggle">
+          <label for="autoReconnectInput">Auto reconnect</label>
+          <label class="toggle-switch">
+            <input type="checkbox" id="autoReconnectInput" />
+            <span class="toggle-track"></span>
+          </label>
+        </div>
+        <button type="submit" class="btn-connect">Save Settings</button>
       </form>
     </div>
 
@@ -168,6 +220,7 @@
         <button type="button" class="action-btn" data-send="&#x9;" title="Tab">⇥</button>
         <button type="button" class="action-btn" id="pasteBtn" title="Paste">Paste</button>
         <button type="button" class="action-btn" id="filesBtn" title="Browse files" hidden>Files</button>
+        <button type="button" class="action-btn" id="settingsBtn" title="Settings">Settings</button>
         <button type="button" class="action-btn action-btn--close" id="disconnectBtn" aria-label="Disconnect">✕</button>
       </div>
     </header>
@@ -200,6 +253,8 @@
         <button class="mkey" data-send="&#x1b;[C">→</button>
         <button class="mkey" data-send="&#x1b;[D">←</button>
         <button class="mkey" data-send="&#x7f;">⌫</button>
+        <button class="mkey" type="button" id="mbarPasteBtn">Paste</button>
+        <button class="mkey" type="button" id="copyModeBtn">Copy</button>
       </div>
       <form class="mbar-cmd" id="cmdForm" autocomplete="off">
         <input type="text" class="cmd-input" id="cmdInput"
@@ -212,6 +267,14 @@
           </svg>
         </button>
       </form>
+    </div>
+
+    <div class="copy-layer" id="copyLayer" hidden>
+      <div class="copy-head">
+        <strong>Copy Mode</strong>
+        <button type="button" class="btn-x" id="closeCopyLayer" aria-label="Close">✕</button>
+      </div>
+      <pre id="copyText"></pre>
     </div>
 
     <script type="module" src="/client.js"></script>

@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import {
   getDatabaseUrl,
   initializeSupabaseSchema,
-  isSupabaseConfigured
+  isSupabaseConfigured,
+  resolveScopedKeyPath
 } from '../supabase-store.js';
 
 test('recognizes Supabase API credentials and the Direct_Link database env var', () => {
@@ -40,6 +41,15 @@ test('initializes Supabase tables, indexes, and permissive RLS policies', async 
   assert.match(pool.sql(), /CREATE POLICY "ssh_keys_client_insert" ON ssh_keys FOR INSERT TO anon, authenticated WITH CHECK \(true\)/);
   assert.match(pool.sql(), /CREATE POLICY "connection_profiles_client_update" ON connection_profiles FOR UPDATE TO anon, authenticated USING \(true\) WITH CHECK \(true\)/);
   assert.match(pool.sql(), /CREATE POLICY "tiny_connect_user_settings_client_delete" ON tiny_connect_user_settings FOR DELETE TO anon, authenticated USING \(true\)/);
+});
+
+test('resolves local key cache paths under the owning user id', () => {
+  const pathA = resolveScopedKeyPath('/tmp/tiny-connect-keys', 'user_a', 'key_prod');
+  const pathB = resolveScopedKeyPath('/tmp/tiny-connect-keys', 'user_b', 'key_prod');
+
+  assert.equal(pathA, '/tmp/tiny-connect-keys/user_a/key_prod.pem');
+  assert.equal(pathB, '/tmp/tiny-connect-keys/user_b/key_prod.pem');
+  assert.notEqual(pathA, pathB);
 });
 
 function createMockPool() {

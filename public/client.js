@@ -1,6 +1,6 @@
 import { Terminal } from 'https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0/+esm';
 import { FitAddon } from 'https://cdn.jsdelivr.net/npm/@xterm/addon-fit@0.10.0/+esm';
-import { withDeviceIdentity } from './identity.js';
+import { getDeviceFingerprint, withDeviceIdentity } from './identity.js';
 import { applyProfileToConnectionForm, renderProfileOptions } from './profile-ui.js';
 
 /* ─── Terminal theme ─────────────────────────────────────────────────────── */
@@ -59,6 +59,8 @@ const statusDot         = document.querySelector('#statusDot');
 const hudHost           = document.querySelector('#hudHost');
 const disconnectBtn     = document.querySelector('#disconnectBtn');
 const filesBtn          = document.querySelector('#filesBtn');
+const settingsBtn       = document.querySelector('#settingsBtn');
+const modalSettingsBtn  = document.querySelector('#modalSettingsBtn');
 const tabBar            = document.querySelector('#tabBar');
 const tabList           = document.querySelector('#tabList');
 const newTabBtn         = document.querySelector('#newTabBtn');
@@ -68,12 +70,25 @@ const mbar              = document.querySelector('#mbar');
 const cmdForm           = document.querySelector('#cmdForm');
 const cmdInput          = document.querySelector('#cmdInput');
 const pasteBtn          = document.querySelector('#pasteBtn');
+const mbarPasteBtn      = document.querySelector('#mbarPasteBtn');
+const copyModeBtn       = document.querySelector('#copyModeBtn');
+const copyLayer         = document.querySelector('#copyLayer');
+const closeCopyLayerBtn = document.querySelector('#closeCopyLayer');
+const copyText          = document.querySelector('#copyText');
 const sftpSheet         = document.querySelector('#sftpSheet');
 const closeSftpSheetBtn = document.querySelector('#closeSftpSheet');
 const sftpPathEl        = document.querySelector('#sftpPath');
 const sftpListEl        = document.querySelector('#sftpList');
 const sftpUpBtn         = document.querySelector('#sftpUpBtn');
 const sftpFileInput     = document.querySelector('#sftpFileInput');
+const settingsSheet     = document.querySelector('#settingsSheet');
+const closeSettingsSheetBtn = document.querySelector('#closeSettingsSheet');
+const settingsForm      = document.querySelector('#settingsForm');
+const fontSizeInput     = document.querySelector('#fontSizeInput');
+const fontSizeValue     = document.querySelector('#fontSizeValue');
+const keepaliveInput    = document.querySelector('#keepaliveInput');
+const disconnectTimeoutInput = document.querySelector('#disconnectTimeoutInput');
+const autoReconnectInput = document.querySelector('#autoReconnectInput');
 
 /* ─── Session class ──────────────────────────────────────────────────────── */
 class Session {
@@ -82,6 +97,8 @@ class Session {
     this.ws = null;
     this.label = 'New Session';
     this.connected = false;
+    this.reconnectTimer = null;
+    this.manualClose = false;
 
     this.el = document.createElement('div');
     this.el.className = 'terminal-pane';
@@ -120,6 +137,9 @@ class Session {
   }
 
   close() {
+    clearTimeout(this.reconnectTimer);
+    this.manualClose = true;
+    this.send({ type: 'close' });
     this.ws?.close();
     this.term.dispose();
     this.el.remove();
@@ -132,11 +152,18 @@ let activeSession = null;
 let currentMode   = 'ssh';
 let profilesCache = [];
 let keysCache     = [];
+let appSettings   = {
+  fontSize: 14,
+  keepaliveIntervalSeconds: 30,
+  disconnectTimeout: '30m',
+  autoReconnect: true
+};
 let sftpCwd       = '.';
 let sftpSessionId = null;
 
 /* ─── Init ───────────────────────────────────────────────────────────────── */
 openModal();
+loadSettings();
 loadKeys();
 loadProfiles();
 renderModeTabs();
@@ -174,7 +201,11 @@ function doConnect() {
 
   socket.addEventListener('open', () => {
     const config = buildConfig();
-    socket.send(JSON.stringify({ type: 'connect', config }));
+    socket.send(JSON.stringify({
+      type: 'connect',
+      config: { ...config, settings: appSettings },
+      deviceFingerprint: getDeviceFingerprint()
+    }));
     sess.label = config.mode === 'ssh' ? `${config.username}@${config.host}` : 'local';
     sess.connected = true;
     closeModal();
@@ -198,11 +229,11 @@ function doConnect() {
 function onSessionDisconnect(sess, reason) {
   sess.ws = null;
   sess.connected = false;
-  sess.sshSessionId = null;
   sess.term.writeln(`\r\n\x1b[2m── ${reason} ──\x1b[0m\r\n`);
   setConnecting(false);
   renderTabs();
   if (sess === activeSession) updateHud();
+  if (!sess.manualClose) scheduleReconnect(sess);
 }
 
 function buildConfig() {
@@ -219,7 +250,54 @@ function buildConfig() {
 }
 
 /* ─── Disconnect ─────────────────────────────────────────────────────────── */
-disconnectBtn.addEventListener('click', () => activeSession?.ws?.close());
+disconnectBtn.addEventListener('click', () => {
+  if (!activeSession) return;
+  activeSession.manualClose = true;
+  activeSession.send({ type: 'close' });
+  activeSession.ws?.close();
+});
+
+function scheduleReconnect(sess) {
+  if (!appSettings.autoReconnect || !sess.sshSessionId) return;
+  clearTimeout(sess.reconnectTimer);
+  sess.reconnectTimer = setTimeout(() => reconnectSession(sess), 1200);
+}
+
+function reconnectSession(sess) {
+  if (!sess.sshSessionId || sess.ws) return;
+  const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  const socket = new WebSocket(`${protocol}//${location.host}/terminal`);
+  sess.ws = socket;
+  socket.addEventListener('open', () => {
+    socket.send(JSON.stringify({
+      type: 'reconnect',
+      sessionId: sess.sshSessionId,
+      deviceFingerprint: getDeviceFingerprint()
+    }));
+  });
+  socket.addEventListener('message', ev => {
+    const msg = JSON.parse(ev.data);
+    if (msg.type === 'data') sess.term.write(msg.data);
+    if (msg.type === 'session') sess.sshSessionId = msg.id;
+    if (msg.type === 'exit') onSessionDisconnect(sess, `exited ${msg.exitCode}`);
+  });
+  socket.addEventListener('close', () => {
+    sess.ws = null;
+    sess.connected = false;
+    renderTabs();
+    if (sess === activeSession) updateHud();
+    scheduleReconnect(sess);
+  });
+  socket.addEventListener('error', () => {
+    sess.ws = null;
+    sess.connected = false;
+    renderTabs();
+    if (sess === activeSession) updateHud();
+  });
+  sess.connected = true;
+  renderTabs();
+  updateHud();
+}
 
 /* ─── Multi-tab management ───────────────────────────────────────────────── */
 newTabBtn.addEventListener('click', () => openModal());
@@ -302,11 +380,33 @@ document.querySelectorAll('[data-send]').forEach(btn => {
 });
 
 /* ─── Paste ──────────────────────────────────────────────────────────────── */
-pasteBtn?.addEventListener('click', async () => {
+pasteBtn?.addEventListener('click', pasteToActiveSession);
+mbarPasteBtn?.addEventListener('click', pasteToActiveSession);
+
+async function pasteToActiveSession() {
   const text = await navigator.clipboard.readText().catch(() => '');
   if (text) activeSession?.send({ type: 'input', data: text });
   activeSession?.term.focus();
-});
+}
+
+copyModeBtn?.addEventListener('click', openCopyMode);
+closeCopyLayerBtn?.addEventListener('click', closeCopyMode);
+
+function openCopyMode() {
+  if (!activeSession) return;
+  const buffer = activeSession.term.buffer.active;
+  const lines = [];
+  for (let index = 0; index < buffer.length; index += 1) {
+    lines.push(buffer.getLine(index)?.translateToString(true) || '');
+  }
+  copyText.textContent = lines.join('\n').replace(/\n+$/g, '');
+  copyLayer.removeAttribute('hidden');
+}
+
+function closeCopyMode() {
+  copyLayer.setAttribute('hidden', '');
+  copyText.textContent = '';
+}
 
 /* ─── Command bar ────────────────────────────────────────────────────────── */
 cmdForm.addEventListener('submit', e => {
@@ -325,6 +425,38 @@ window.visualViewport?.addEventListener('resize', () => requestAnimationFrame(()
 /* ─── Add key sheet ──────────────────────────────────────────────────────── */
 addKeyBtn.addEventListener('click', openKeySheet);
 closeKeySheet.addEventListener('click', closeKeySheet_fn);
+settingsBtn?.addEventListener('click', openSettingsSheet);
+modalSettingsBtn?.addEventListener('click', openSettingsSheet);
+closeSettingsSheetBtn?.addEventListener('click', closeSettingsSheetFn);
+fontSizeInput?.addEventListener('input', () => {
+  fontSizeValue.textContent = fontSizeInput.value;
+  applySettings({ ...appSettings, fontSize: Number(fontSizeInput.value) });
+});
+
+settingsForm?.addEventListener('submit', async e => {
+  e.preventDefault();
+  const next = {
+    fontSize: Number(fontSizeInput.value),
+    keepaliveIntervalSeconds: Number(keepaliveInput.value),
+    disconnectTimeout: disconnectTimeoutInput.value,
+    autoReconnect: autoReconnectInput.checked
+  };
+  try {
+    const res = await fetch('/api/settings', withDeviceIdentity({
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ settings: next })
+    }));
+    const body = await res.json();
+    if (!res.ok) throw new Error(body.error || 'Save failed');
+    applySettings(body.settings);
+    renderSettingsForm();
+    closeSettingsSheetFn();
+    toast('Settings saved', 'ok');
+  } catch (err) {
+    toast(err.message, 'err');
+  }
+});
 
 keyForm.addEventListener('submit', async e => {
   e.preventDefault();
@@ -443,7 +575,7 @@ async function doSaveProfile() {
       if (deleteProfileBtn) deleteProfileBtn.hidden = false;
     }
     profileNameInput.value = '';
-    toast(`Saved "${name}"`, 'ok');
+    toast(`Saved host "${name}"`, 'ok');
   } catch (err) {
     toast(err.message, 'err');
   } finally {
@@ -461,13 +593,13 @@ deleteProfileBtn?.addEventListener('click', async () => {
   const id = profileSelect.value;
   if (!id) return;
   const profile = profilesCache.find(p => p.id === id);
-  if (!confirm(`Delete profile "${profile?.name || id}"?`)) return;
+  if (!confirm(`Delete saved host "${profile?.name || id}"?`)) return;
   try {
     const res = await fetch(`/api/profiles/${encodeURIComponent(id)}`, withDeviceIdentity({ method: 'DELETE' }));
     const body = await res.json();
     if (!res.ok) throw new Error(body.error || 'Delete failed');
     await loadProfiles();
-    toast('Profile deleted', 'ok');
+    toast('Saved host deleted', 'ok');
   } catch (err) {
     toast(err.message, 'err');
   }
@@ -604,6 +736,38 @@ async function loadKeys(selectedId = '') {
   } catch (_) {}
 }
 
+async function loadSettings() {
+  try {
+    const res = await fetch('/api/settings', withDeviceIdentity());
+    const body = await res.json();
+    if (res.ok) applySettings(body.settings || {});
+  } catch (_) {}
+  renderSettingsForm();
+}
+
+function applySettings(settings) {
+  appSettings = {
+    fontSize: Number(settings.fontSize) || 14,
+    keepaliveIntervalSeconds: Number(settings.keepaliveIntervalSeconds) || 30,
+    disconnectTimeout: settings.disconnectTimeout || '30m',
+    autoReconnect: settings.autoReconnect !== false
+  };
+  TERM_OPTS.fontSize = appSettings.fontSize;
+  for (const sess of sessions) {
+    sess.term.options.fontSize = appSettings.fontSize;
+    sess.fit();
+  }
+}
+
+function renderSettingsForm() {
+  if (!settingsForm) return;
+  fontSizeInput.value = String(appSettings.fontSize);
+  fontSizeValue.textContent = String(appSettings.fontSize);
+  keepaliveInput.value = String(appSettings.keepaliveIntervalSeconds);
+  disconnectTimeoutInput.value = appSettings.disconnectTimeout;
+  autoReconnectInput.checked = appSettings.autoReconnect;
+}
+
 keyIdInput?.addEventListener('change', () => {
   if (deleteKeyBtn) deleteKeyBtn.hidden = !keyIdInput.value;
 });
@@ -627,6 +791,16 @@ function openKeySheet() {
 function closeKeySheet_fn() {
   keySheet.classList.remove('open');
   setTimeout(() => keySheet.setAttribute('hidden', ''), 320);
+}
+
+function openSettingsSheet() {
+  renderSettingsForm();
+  settingsSheet.removeAttribute('hidden');
+  requestAnimationFrame(() => settingsSheet.classList.add('open'));
+}
+function closeSettingsSheetFn() {
+  settingsSheet.classList.remove('open');
+  setTimeout(() => settingsSheet.setAttribute('hidden', ''), 320);
 }
 
 function showHud() {
