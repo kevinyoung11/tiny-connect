@@ -26,10 +26,7 @@ const shell = process.env.TERMINAL_SHELL || defaultShell;
 const startupCommand = process.env.STARTUP_COMMAND || '';
 
 const keysDir = process.env.VERCEL ? '/tmp/.keys' : path.join(__dirname, '.keys');
-
-if (!isSupabaseConfigured()) {
-  throw new Error('Supabase database is required. Set DIRECT_URL, DATABASE_URL, or Direct_Link.');
-}
+const supabaseConfigured = isSupabaseConfigured();
 
 const keyStore = createSupabaseKeyStore(keysDir);
 const profileStore = createSupabaseProfileStore();
@@ -43,6 +40,25 @@ app.use(express.json({ limit: '256kb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 app.use('/xterm', express.static(path.join(__dirname, 'node_modules', '@xterm', 'xterm')));
 app.use('/xterm-fit', express.static(path.join(__dirname, 'node_modules', '@xterm', 'addon-fit')));
+
+app.get('/healthz', (req, res) => {
+  res.json({
+    ok: true,
+    supabaseConfigured
+  });
+});
+
+app.use('/api', requireSupabaseConfig);
+
+function requireSupabaseConfig(req, res, next) {
+  if (supabaseConfigured) {
+    next();
+    return;
+  }
+  res.status(503).json({
+    error: 'Supabase is not configured. Set SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, and Direct_Link/DIRECT_URL/DATABASE_URL.'
+  });
+}
 
 /* ── SSH Key endpoints ─────────────────────────────────────────────────────── */
 app.get('/api/keys', async (req, res) => {
@@ -285,6 +301,9 @@ function createTerminal(ws) {
 }
 
 async function connectTransport(ws, message) {
+  if (!supabaseConfigured) {
+    throw new Error('Supabase is not configured. Set SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, and Direct_Link/DIRECT_URL/DATABASE_URL.');
+  }
   const scope = await getSocketScope(message);
   const config = buildConnectionConfig(message.config || {}, {
     resolveKeyPath: (keyId) => `managed-key:${keyId}`
@@ -471,8 +490,12 @@ if (!process.env.VERCEL) {
 }
 
 async function startServer() {
-  await Promise.all([keyStore.init(), profileStore.init(), userStore.init()]);
-  console.log('[supabase] connected and tables ready');
+  if (supabaseConfigured) {
+    await Promise.all([keyStore.init(), profileStore.init(), userStore.init()]);
+    console.log('[supabase] connected and tables ready');
+  } else {
+    console.warn('[supabase] not configured; /api and SSH WebSocket connections will return configuration errors');
+  }
 
   server.listen(port, host, () => {
     const nets = os.networkInterfaces();

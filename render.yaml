@@ -6,3 +6,9 @@ services:
     envVars:
       - key: HOST
         value: 0.0.0.0
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: Direct_Link
+        sync: false
