@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   getDatabaseUrl,
+  getSupabaseConfigStatus,
   initializeSupabaseSchema,
   isSupabaseConfigured,
   resolveScopedKeyPath
@@ -11,6 +12,7 @@ test('recognizes Supabase API credentials and the Direct_Link database env var',
   const original = snapshotEnv();
   delete process.env.SUPABASE_URL;
   delete process.env.SUPABASE_SERVICE_ROLE_KEY;
+  delete process.env.DIRECT_LINK;
   delete process.env.DIRECT_URL;
   delete process.env.DATABASE_URL;
   delete process.env.Direct_Link;
@@ -19,10 +21,19 @@ test('recognizes Supabase API credentials and the Direct_Link database env var',
     assert.equal(isSupabaseConfigured(), false);
     process.env.SUPABASE_URL = 'https://example.supabase.co';
     process.env.SUPABASE_SERVICE_ROLE_KEY = 'service-role-key';
+    assert.equal(isSupabaseConfigured(), false);
+
     process.env.Direct_Link = 'postgresql://example/supabase';
 
     assert.equal(isSupabaseConfigured(), true);
     assert.equal(getDatabaseUrl(), 'postgresql://example/supabase');
+    assert.deepEqual(getSupabaseConfigStatus(), {
+      configured: true,
+      hasSupabaseUrl: true,
+      hasServiceRoleKey: true,
+      hasDatabaseUrl: true,
+      databaseUrlVariable: 'Direct_Link'
+    });
   } finally {
     restoreEnv(original);
   }
@@ -69,6 +80,7 @@ function snapshotEnv() {
   return {
     SUPABASE_URL: process.env.SUPABASE_URL,
     SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY,
+    DIRECT_LINK: process.env.DIRECT_LINK,
     DIRECT_URL: process.env.DIRECT_URL,
     DATABASE_URL: process.env.DATABASE_URL,
     Direct_Link: process.env.Direct_Link

@@ -14,6 +14,7 @@ import {
   createSupabaseKeyStore,
   createSupabaseProfileStore,
   createSupabaseUserStore,
+  getSupabaseConfigStatus,
   isSupabaseConfigured
 } from './supabase-store.js';
 import { disconnectTimeoutToMs, normalizeSettings } from './settings.js';
@@ -44,7 +45,8 @@ app.use('/xterm-fit', express.static(path.join(__dirname, 'node_modules', '@xter
 app.get('/healthz', (req, res) => {
   res.json({
     ok: true,
-    supabaseConfigured
+    supabaseConfigured,
+    supabase: getSupabaseConfigStatus()
   });
 });
 

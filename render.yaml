@@ -10,5 +10,5 @@ services:
         sync: false
       - key: SUPABASE_SERVICE_ROLE_KEY
         sync: false
-      - key: Direct_Link
+      - key: DIRECT_LINK
         sync: false

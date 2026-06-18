@@ -36,7 +36,11 @@ function getPgPool() {
 }
 
 export function getDatabaseUrl() {
-  return process.env.Direct_Link || process.env.DIRECT_URL || process.env.DATABASE_URL || '';
+  return process.env.Direct_Link
+    || process.env.DIRECT_LINK
+    || process.env.DIRECT_URL
+    || process.env.DATABASE_URL
+    || '';
 }
 
 export function resolveScopedKeyPath(localDir, userId, keyId) {
@@ -369,5 +373,26 @@ export function createSupabaseProfileStore() {
 /* ── Config check ───────────────────────────────────────────────────────── */
 
 export function isSupabaseConfigured() {
-  return !!(process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY);
+  return getSupabaseConfigStatus().configured;
+}
+
+export function getSupabaseConfigStatus() {
+  const hasSupabaseUrl = Boolean(process.env.SUPABASE_URL);
+  const hasServiceRoleKey = Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY);
+  const databaseUrlVariable = getDatabaseUrlVariableName();
+  return {
+    configured: hasSupabaseUrl && hasServiceRoleKey && Boolean(databaseUrlVariable),
+    hasSupabaseUrl,
+    hasServiceRoleKey,
+    hasDatabaseUrl: Boolean(databaseUrlVariable),
+    databaseUrlVariable
+  };
+}
+
+function getDatabaseUrlVariableName() {
+  if (process.env.Direct_Link) return 'Direct_Link';
+  if (process.env.DIRECT_LINK) return 'DIRECT_LINK';
+  if (process.env.DIRECT_URL) return 'DIRECT_URL';
+  if (process.env.DATABASE_URL) return 'DATABASE_URL';
+  return '';
 }
