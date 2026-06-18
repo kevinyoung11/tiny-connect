@@ -9,7 +9,7 @@ const disconnectTimeouts = new Set(['5m', '30m', '2h', 'never']);
 
 export function normalizeSettings(input = {}) {
   return {
-    fontSize: clampNumber(input.fontSize, 12, 24, defaultSettings.fontSize),
+    fontSize: clampNumber(input.fontSize, 10, 24, defaultSettings.fontSize),
     keepaliveIntervalSeconds: clampNumber(
       input.keepaliveIntervalSeconds,
       10,

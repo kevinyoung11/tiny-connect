@@ -6,7 +6,7 @@ test('normalizes missing settings to product defaults', () => {
   assert.deepEqual(normalizeSettings({}), defaultSettings);
 });
 
-test('clamps terminal font size and keepalive interval', () => {
+test('clamps terminal font size between 10 and 24 and keepalive interval', () => {
   assert.deepEqual(normalizeSettings({
     fontSize: 80,
     keepaliveIntervalSeconds: 1,
@@ -18,6 +18,8 @@ test('clamps terminal font size and keepalive interval', () => {
     disconnectTimeout: 'never',
     autoReconnect: true
   });
+
+  assert.equal(normalizeSettings({ fontSize: 6 }).fontSize, 10);
 });
 
 test('rejects unsupported disconnect timeout values by using default', () => {

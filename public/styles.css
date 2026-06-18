@@ -381,6 +381,20 @@ label {
   color: var(--text-2);
   font: 12px/1 var(--mono);
 }
+.font-preview {
+  min-height: 94px;
+  padding: 12px;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  background: rgba(0,0,0,.26);
+  color: var(--text);
+  font-family: var(--mono);
+  line-height: 1.35;
+  white-space: pre-wrap;
+  user-select: text;
+  -webkit-user-select: text;
+}
 
 /* ─── SFTP sheet ─────────────────────────────────────────────────────────── */
 .sheet--sftp { max-height: 82dvh; }

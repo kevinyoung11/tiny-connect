@@ -130,8 +130,15 @@
       <form id="settingsForm" autocomplete="off">
         <div class="field">
           <label for="fontSizeInput">Font size</label>
-          <input id="fontSizeInput" type="range" min="12" max="24" step="1" />
+          <input id="fontSizeInput" type="range" min="10" max="24" step="1" />
           <span class="range-value" id="fontSizeValue">14</span>
+        </div>
+        <div class="field">
+          <label>Preview</label>
+          <pre class="font-preview" id="fontPreview">TinyConnect terminal
+$ ssh prod
+中文输出 abc 123
+codex ready</pre>
         </div>
         <div class="field">
           <label for="keepaliveInput">Keepalive interval</label>

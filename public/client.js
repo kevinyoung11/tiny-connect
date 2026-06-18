@@ -86,6 +86,7 @@ const closeSettingsSheetBtn = document.querySelector('#closeSettingsSheet');
 const settingsForm      = document.querySelector('#settingsForm');
 const fontSizeInput     = document.querySelector('#fontSizeInput');
 const fontSizeValue     = document.querySelector('#fontSizeValue');
+const fontPreview       = document.querySelector('#fontPreview');
 const keepaliveInput    = document.querySelector('#keepaliveInput');
 const disconnectTimeoutInput = document.querySelector('#disconnectTimeoutInput');
 const autoReconnectInput = document.querySelector('#autoReconnectInput');
@@ -454,7 +455,10 @@ settingsForm?.addEventListener('submit', async e => {
     closeSettingsSheetFn();
     toast('Settings saved', 'ok');
   } catch (err) {
-    toast(err.message, 'err');
+    applySettings(next);
+    renderSettingsForm();
+    closeSettingsSheetFn();
+    toast('Settings saved locally', 'ok');
   }
 });
 
@@ -741,7 +745,10 @@ async function loadSettings() {
     const res = await fetch('/api/settings', withDeviceIdentity());
     const body = await res.json();
     if (res.ok) applySettings(body.settings || {});
-  } catch (_) {}
+    else applySettings(readLocalSettings());
+  } catch (_) {
+    applySettings(readLocalSettings());
+  }
   renderSettingsForm();
 }
 
@@ -753,6 +760,8 @@ function applySettings(settings) {
     autoReconnect: settings.autoReconnect !== false
   };
   TERM_OPTS.fontSize = appSettings.fontSize;
+  localStorage.setItem('tinyconnect.settings', JSON.stringify(appSettings));
+  if (fontPreview) fontPreview.style.fontSize = `${appSettings.fontSize}px`;
   for (const sess of sessions) {
     sess.term.options.fontSize = appSettings.fontSize;
     sess.fit();
@@ -766,6 +775,14 @@ function renderSettingsForm() {
   keepaliveInput.value = String(appSettings.keepaliveIntervalSeconds);
   disconnectTimeoutInput.value = appSettings.disconnectTimeout;
   autoReconnectInput.checked = appSettings.autoReconnect;
+}
+
+function readLocalSettings() {
+  try {
+    return JSON.parse(localStorage.getItem('tinyconnect.settings') || '{}');
+  } catch (_) {
+    return {};
+  }
 }
 
 keyIdInput?.addEventListener('change', () => {
