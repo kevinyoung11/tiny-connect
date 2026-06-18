@@ -14,11 +14,15 @@ test('normalizes missing settings to product defaults', () => {
 test('clamps terminal font size between 10 and 24 and keepalive interval', () => {
   assert.deepEqual(normalizeSettings({
     fontSize: 80,
+    fontFamily: 'dracula-font',
+    theme: 'tokyo-night',
     keepaliveIntervalSeconds: 1,
     disconnectTimeout: 'never',
     autoReconnect: true
   }), {
     fontSize: 24,
+    fontFamily: 'system',
+    theme: 'tokyo-night',
     keepaliveIntervalSeconds: 10,
     disconnectTimeout: 'never',
     autoReconnect: true,
@@ -26,6 +30,8 @@ test('clamps terminal font size between 10 and 24 and keepalive interval', () =>
   });
 
   assert.equal(normalizeSettings({ fontSize: 6 }).fontSize, 10);
+  assert.equal(normalizeSettings({ fontFamily: 'jetbrains' }).fontFamily, 'jetbrains');
+  assert.equal(normalizeSettings({ theme: 'dracula' }).theme, 'dracula');
 });
 
 test('rejects unsupported disconnect timeout values by using default', () => {

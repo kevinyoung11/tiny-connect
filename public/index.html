@@ -122,6 +122,30 @@
           <span class="range-value" id="fontSizeValue">14</span>
         </div>
         <div class="field">
+          <label for="fontFamilyInput">Font family</label>
+          <select id="fontFamilyInput">
+            <option value="system">System Mono</option>
+            <option value="jetbrains">JetBrains Mono</option>
+            <option value="fira">Fira Code</option>
+            <option value="cascadia">Cascadia Code</option>
+            <option value="hack">Hack</option>
+            <option value="meslo">Meslo / Nerd Font</option>
+            <option value="noto-cjk">Noto Sans Mono CJK</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="themeInput">Theme</label>
+          <select id="themeInput">
+            <option value="tiny-dark">Tiny Dark</option>
+            <option value="tokyo-night">Tokyo Night</option>
+            <option value="dracula">Dracula</option>
+            <option value="nord">Nord</option>
+            <option value="catppuccin">Catppuccin</option>
+            <option value="solarized-dark">Solarized Dark</option>
+            <option value="gruvbox-dark">Gruvbox Dark</option>
+          </select>
+        </div>
+        <div class="field">
           <label>Preview</label>
           <pre class="font-preview" id="fontPreview">TinyConnect terminal
 $ ssh prod
@@ -169,6 +193,12 @@ codex ready</pre>
           <div class="pairing-row">
             <input id="pairingCodeInput" type="text" inputmode="numeric" placeholder="Enter 6-digit code" maxlength="6" />
             <button type="button" class="mini-btn" id="linkDeviceBtn">Link</button>
+          </div>
+        </div>
+        <div class="field">
+          <div class="settings-row-head">
+            <label>Debug</label>
+            <button type="button" class="mini-btn" id="settingsDebugBtn">Open</button>
           </div>
         </div>
         <button type="submit" class="btn-connect">Save Settings</button>
@@ -234,7 +264,6 @@ codex ready</pre>
         <button type="button" class="action-btn" data-send="&#x9;" title="Tab">⇥</button>
         <button type="button" class="action-btn" id="pasteBtn" title="Paste">Paste</button>
         <button type="button" class="action-btn" id="searchBtn" title="Search">Search</button>
-        <button type="button" class="action-btn" id="debugBtn" title="Debug">Debug</button>
         <button type="button" class="action-btn" id="filesBtn" title="Browse files" hidden>Files</button>
         <button type="button" class="action-btn" id="settingsBtn" title="Settings">Settings</button>
         <button type="button" class="action-btn action-btn--close" id="disconnectBtn" aria-label="Disconnect">✕</button>

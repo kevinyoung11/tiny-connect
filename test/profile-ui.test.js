@@ -31,8 +31,13 @@ test('terminal shell exposes recovery status, debug, snippets, and copy scopes',
   const html = readFileSync(resolve('public/index.html'), 'utf8');
 
   assert.ok(html.includes('id="hudState"'));
-  assert.ok(html.includes('id="debugBtn"'));
+  assert.ok(!html.includes('id="debugBtn"'));
+  assert.ok(html.includes('id="settingsDebugBtn"'));
   assert.ok(html.includes('id="debugSheet"'));
+  assert.ok(html.includes('id="fontFamilyInput"'));
+  assert.ok(html.includes('id="themeInput"'));
+  assert.ok(html.includes('value="tokyo-night"'));
+  assert.ok(html.includes('value="dracula"'));
   assert.ok(html.includes('data-draft="git status"'));
   assert.ok(html.includes('data-copy-scope="screen"'));
   assert.ok(html.includes('data-copy-scope="all"'));

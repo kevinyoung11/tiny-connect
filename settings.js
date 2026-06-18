@@ -1,5 +1,7 @@
 export const defaultSettings = {
   fontSize: 14,
+  fontFamily: 'system',
+  theme: 'tiny-dark',
   keepaliveIntervalSeconds: 30,
   disconnectTimeout: '30m',
   autoReconnect: true,
@@ -7,10 +9,14 @@ export const defaultSettings = {
 };
 
 const disconnectTimeouts = new Set(['5m', '30m', '2h', 'never']);
+const fontFamilies = new Set(['system', 'jetbrains', 'fira', 'cascadia', 'hack', 'meslo', 'noto-cjk']);
+const themes = new Set(['tiny-dark', 'tokyo-night', 'dracula', 'nord', 'catppuccin', 'solarized-dark', 'gruvbox-dark']);
 
 export function normalizeSettings(input = {}) {
   return {
     fontSize: clampNumber(input.fontSize, 10, 24, defaultSettings.fontSize),
+    fontFamily: fontFamilies.has(input.fontFamily) ? input.fontFamily : defaultSettings.fontFamily,
+    theme: themes.has(input.theme) ? input.theme : defaultSettings.theme,
     keepaliveIntervalSeconds: clampNumber(
       input.keepaliveIntervalSeconds,
       10,

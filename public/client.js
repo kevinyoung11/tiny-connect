@@ -6,6 +6,31 @@ import { Unicode11Addon } from 'https://cdn.jsdelivr.net/npm/@xterm/addon-unicod
 import { getDeviceFingerprint, withDeviceIdentity } from './identity.js';
 import { applyProfileToConnectionForm, renderProfileMenu } from './profile-ui.js';
 
+const FONT_STACKS = {
+  system: '"SF Mono","Fira Code",ui-monospace,Menlo,"Noto Sans Mono CJK SC",monospace',
+  jetbrains: '"JetBrains Mono","SF Mono","Noto Sans Mono CJK SC",monospace',
+  fira: '"Fira Code","SF Mono","Noto Sans Mono CJK SC",monospace',
+  cascadia: '"Cascadia Code","SF Mono","Noto Sans Mono CJK SC",monospace',
+  hack: '"Hack","SF Mono","Noto Sans Mono CJK SC",monospace',
+  meslo: '"MesloLGS NF","Meslo LG S","SF Mono","Noto Sans Mono CJK SC",monospace',
+  'noto-cjk': '"Noto Sans Mono CJK SC","Noto Sans Mono CJK","SF Mono",monospace'
+};
+
+const TERM_THEMES = {
+  'tiny-dark': {
+    background: '#09090d', foreground: '#c8ccd6', cursor: '#00d4aa', cursorAccent: '#09090d',
+    selectionBackground: 'rgba(0,212,170,0.22)',
+    black: '#1a1b26', red: '#f7768e', green: '#9ece6a', yellow: '#e0af68', blue: '#7aa2f7', magenta: '#bb9af7', cyan: '#7dcfff', white: '#a9b1d6',
+    brightBlack: '#444b6a', brightRed: '#ff7a93', brightGreen: '#b9f27c', brightYellow: '#ff9e64', brightBlue: '#7da6ff', brightMagenta: '#bb9af7', brightCyan: '#0db9d7', brightWhite: '#acb0d0'
+  },
+  'tokyo-night': { background: '#1a1b26', foreground: '#c0caf5', cursor: '#c0caf5', black: '#15161e', red: '#f7768e', green: '#9ece6a', yellow: '#e0af68', blue: '#7aa2f7', magenta: '#bb9af7', cyan: '#7dcfff', white: '#a9b1d6', brightBlack: '#414868', brightRed: '#f7768e', brightGreen: '#9ece6a', brightYellow: '#e0af68', brightBlue: '#7aa2f7', brightMagenta: '#bb9af7', brightCyan: '#7dcfff', brightWhite: '#c0caf5' },
+  dracula: { background: '#282a36', foreground: '#f8f8f2', cursor: '#f8f8f2', black: '#21222c', red: '#ff5555', green: '#50fa7b', yellow: '#f1fa8c', blue: '#bd93f9', magenta: '#ff79c6', cyan: '#8be9fd', white: '#f8f8f2', brightBlack: '#6272a4', brightRed: '#ff6e6e', brightGreen: '#69ff94', brightYellow: '#ffffa5', brightBlue: '#d6acff', brightMagenta: '#ff92df', brightCyan: '#a4ffff', brightWhite: '#ffffff' },
+  nord: { background: '#2e3440', foreground: '#d8dee9', cursor: '#88c0d0', black: '#3b4252', red: '#bf616a', green: '#a3be8c', yellow: '#ebcb8b', blue: '#81a1c1', magenta: '#b48ead', cyan: '#88c0d0', white: '#e5e9f0', brightBlack: '#4c566a', brightRed: '#bf616a', brightGreen: '#a3be8c', brightYellow: '#ebcb8b', brightBlue: '#81a1c1', brightMagenta: '#b48ead', brightCyan: '#8fbcbb', brightWhite: '#eceff4' },
+  catppuccin: { background: '#1e1e2e', foreground: '#cdd6f4', cursor: '#f5e0dc', black: '#45475a', red: '#f38ba8', green: '#a6e3a1', yellow: '#f9e2af', blue: '#89b4fa', magenta: '#f5c2e7', cyan: '#94e2d5', white: '#bac2de', brightBlack: '#585b70', brightRed: '#f38ba8', brightGreen: '#a6e3a1', brightYellow: '#f9e2af', brightBlue: '#89b4fa', brightMagenta: '#f5c2e7', brightCyan: '#94e2d5', brightWhite: '#a6adc8' },
+  'solarized-dark': { background: '#002b36', foreground: '#839496', cursor: '#93a1a1', black: '#073642', red: '#dc322f', green: '#859900', yellow: '#b58900', blue: '#268bd2', magenta: '#d33682', cyan: '#2aa198', white: '#eee8d5', brightBlack: '#002b36', brightRed: '#cb4b16', brightGreen: '#586e75', brightYellow: '#657b83', brightBlue: '#839496', brightMagenta: '#6c71c4', brightCyan: '#93a1a1', brightWhite: '#fdf6e3' },
+  'gruvbox-dark': { background: '#282828', foreground: '#ebdbb2', cursor: '#fabd2f', black: '#282828', red: '#cc241d', green: '#98971a', yellow: '#d79921', blue: '#458588', magenta: '#b16286', cyan: '#689d6a', white: '#a89984', brightBlack: '#928374', brightRed: '#fb4934', brightGreen: '#b8bb26', brightYellow: '#fabd2f', brightBlue: '#83a598', brightMagenta: '#d3869b', brightCyan: '#8ec07c', brightWhite: '#ebdbb2' }
+};
+
 /* ─── Terminal theme ─────────────────────────────────────────────────────── */
 const TERM_OPTS = {
   cursorBlink: true,
@@ -15,18 +40,7 @@ const TERM_OPTS = {
   fontSize: 14,
   lineHeight: 1.3,
   allowProposedApi: false,
-  theme: {
-    background:          '#09090d',
-    foreground:          '#c8ccd6',
-    cursor:              '#00d4aa',
-    cursorAccent:        '#09090d',
-    selectionBackground: 'rgba(0,212,170,0.22)',
-    black:   '#1a1b26', red:     '#f7768e', green:   '#9ece6a', yellow:  '#e0af68',
-    blue:    '#7aa2f7', magenta: '#bb9af7', cyan:    '#7dcfff', white:   '#a9b1d6',
-    brightBlack:   '#444b6a', brightRed:   '#ff7a93', brightGreen:  '#b9f27c',
-    brightYellow:  '#ff9e64', brightBlue:  '#7da6ff', brightMagenta:'#bb9af7',
-    brightCyan:    '#0db9d7', brightWhite: '#acb0d0',
-  },
+  theme: TERM_THEMES['tiny-dark'],
 };
 
 /* ─── DOM refs ───────────────────────────────────────────────────────────── */
@@ -64,7 +78,6 @@ const filesBtn          = document.querySelector('#filesBtn');
 const settingsBtn       = document.querySelector('#settingsBtn');
 const modalSettingsBtn  = document.querySelector('#modalSettingsBtn');
 const searchBtn         = document.querySelector('#searchBtn');
-const debugBtn          = document.querySelector('#debugBtn');
 const tabBar            = document.querySelector('#tabBar');
 const tabList           = document.querySelector('#tabList');
 const newTabBtn         = document.querySelector('#newTabBtn');
@@ -93,6 +106,8 @@ const closeSettingsSheetBtn = document.querySelector('#closeSettingsSheet');
 const settingsForm      = document.querySelector('#settingsForm');
 const fontSizeInput     = document.querySelector('#fontSizeInput');
 const fontSizeValue     = document.querySelector('#fontSizeValue');
+const fontFamilyInput   = document.querySelector('#fontFamilyInput');
+const themeInput        = document.querySelector('#themeInput');
 const fontPreview       = document.querySelector('#fontPreview');
 const keepaliveInput    = document.querySelector('#keepaliveInput');
 const disconnectTimeoutInput = document.querySelector('#disconnectTimeoutInput');
@@ -103,6 +118,7 @@ const createPairingCodeBtn = document.querySelector('#createPairingCodeBtn');
 const pairingCodeBox    = document.querySelector('#pairingCodeBox');
 const pairingCodeInput  = document.querySelector('#pairingCodeInput');
 const linkDeviceBtn     = document.querySelector('#linkDeviceBtn');
+const settingsDebugBtn  = document.querySelector('#settingsDebugBtn');
 
 /* ─── Session class ──────────────────────────────────────────────────────── */
 class Session {
@@ -178,6 +194,8 @@ let profilesCache = [];
 let keysCache     = [];
 let appSettings   = {
   fontSize: 14,
+  fontFamily: 'system',
+  theme: 'tiny-dark',
   keepaliveIntervalSeconds: 30,
   disconnectTimeout: '30m',
   autoReconnect: true,
@@ -503,7 +521,7 @@ searchBtn?.addEventListener('click', () => {
   if (term) activeSession.searchAddon.findNext(term);
 });
 
-debugBtn?.addEventListener('click', openDebugSheet);
+settingsDebugBtn?.addEventListener('click', openDebugSheet);
 closeDebugSheetBtn?.addEventListener('click', closeDebugSheet);
 document.querySelectorAll('[data-debug-tab]').forEach((button) => {
   button.addEventListener('click', () => {
@@ -634,11 +652,19 @@ fontSizeInput?.addEventListener('input', () => {
   fontSizeValue.textContent = fontSizeInput.value;
   applySettings({ ...appSettings, fontSize: Number(fontSizeInput.value) });
 });
+fontFamilyInput?.addEventListener('change', () => {
+  applySettings({ ...appSettings, fontFamily: fontFamilyInput.value });
+});
+themeInput?.addEventListener('change', () => {
+  applySettings({ ...appSettings, theme: themeInput.value });
+});
 
 settingsForm?.addEventListener('submit', async e => {
   e.preventDefault();
   const next = {
     fontSize: Number(fontSizeInput.value),
+    fontFamily: fontFamilyInput.value,
+    theme: themeInput.value,
     keepaliveIntervalSeconds: Number(keepaliveInput.value),
     disconnectTimeout: disconnectTimeoutInput.value,
     autoReconnect: autoReconnectInput.checked,
@@ -979,15 +1005,26 @@ async function loadSettings() {
 function applySettings(settings) {
   appSettings = {
     fontSize: Number(settings.fontSize) || 14,
+    fontFamily: settings.fontFamily || 'system',
+    theme: settings.theme || 'tiny-dark',
     keepaliveIntervalSeconds: Number(settings.keepaliveIntervalSeconds) || 30,
     disconnectTimeout: settings.disconnectTimeout || '30m',
     autoReconnect: settings.autoReconnect !== false,
     habits: Array.isArray(settings.habits) ? settings.habits : []
   };
   TERM_OPTS.fontSize = appSettings.fontSize;
-  if (fontPreview) fontPreview.style.fontSize = `${appSettings.fontSize}px`;
+  TERM_OPTS.fontFamily = FONT_STACKS[appSettings.fontFamily] || FONT_STACKS.system;
+  TERM_OPTS.theme = TERM_THEMES[appSettings.theme] || TERM_THEMES['tiny-dark'];
+  if (fontPreview) {
+    fontPreview.style.fontSize = `${appSettings.fontSize}px`;
+    fontPreview.style.fontFamily = TERM_OPTS.fontFamily;
+    fontPreview.style.background = TERM_OPTS.theme.background;
+    fontPreview.style.color = TERM_OPTS.theme.foreground;
+  }
   for (const sess of sessions) {
     sess.term.options.fontSize = appSettings.fontSize;
+    sess.term.options.fontFamily = TERM_OPTS.fontFamily;
+    sess.term.options.theme = TERM_OPTS.theme;
     sess.fit();
   }
 }
@@ -996,6 +1033,8 @@ function renderSettingsForm() {
   if (!settingsForm) return;
   fontSizeInput.value = String(appSettings.fontSize);
   fontSizeValue.textContent = String(appSettings.fontSize);
+  fontFamilyInput.value = appSettings.fontFamily;
+  themeInput.value = appSettings.theme;
   keepaliveInput.value = String(appSettings.keepaliveIntervalSeconds);
   disconnectTimeoutInput.value = appSettings.disconnectTimeout;
   autoReconnectInput.checked = appSettings.autoReconnect;
