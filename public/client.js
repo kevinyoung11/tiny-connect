@@ -232,13 +232,14 @@ let appSettings   = {
   fontFamily: 'system',
   theme: 'tiny-dark',
   keepaliveIntervalSeconds: 30,
-  disconnectTimeout: '30m',
+  disconnectTimeout: 'never',
   autoReconnect: true,
   habits: []
 };
 let sftpCwd       = '.';
 let sftpSessionId = null;
 let debugTab      = 'logs';
+let pageSuspended = document.visibilityState === 'hidden';
 
 /* ─── Init ───────────────────────────────────────────────────────────────── */
 openModal();
@@ -286,7 +287,7 @@ function doConnect() {
     if (msg.type === 'exit')    onSessionDisconnect(sess, `exited ${msg.exitCode}`);
   });
 
-  socket.addEventListener('close', () => onSessionDisconnect(sess, 'disconnected'));
+  socket.addEventListener('close', () => onSessionDisconnect(sess, pageSuspended ? 'suspended' : 'disconnected'));
   socket.addEventListener('error', () => { setConnecting(false); toast('Connection error', 'err'); });
 }
 
@@ -294,12 +295,13 @@ function onSessionDisconnect(sess, reason) {
   stopHeartbeat(sess);
   sess.ws = null;
   sess.connected = false;
-  setSessionStatus(sess, sess.sshSessionId ? 'detached' : 'disconnected');
-  sess.term.writeln(`\r\n\x1b[2m── ${reason} ──\x1b[0m\r\n`);
+  const expectedSuspend = reason === 'suspended' && sess.sshSessionId;
+  setSessionStatus(sess, expectedSuspend ? 'suspended' : sess.sshSessionId ? 'detached' : 'disconnected');
+  if (!expectedSuspend) sess.term.writeln(`\r\n\x1b[2m── ${reason} ──\x1b[0m\r\n`);
   setConnecting(false);
   renderTabs();
   if (sess === activeSession) updateHud();
-  if (!sess.manualClose) scheduleReconnect(sess);
+  if (!sess.manualClose && !expectedSuspend) scheduleReconnect(sess);
 }
 
 function buildConfig() {
@@ -355,10 +357,10 @@ function reconnectSession(sess) {
     stopHeartbeat(sess);
     sess.ws = null;
     sess.connected = false;
-    setSessionStatus(sess, 'detached');
+    setSessionStatus(sess, pageSuspended ? 'suspended' : 'detached');
     renderTabs();
     if (sess === activeSession) updateHud();
-    scheduleReconnect(sess);
+    if (!pageSuspended) scheduleReconnect(sess);
   });
   socket.addEventListener('error', () => {
     stopHeartbeat(sess);
@@ -476,8 +478,35 @@ function statusLabel(status) {
     detached: 'Detached',
     reconnecting: 'Reconnecting',
     restored: 'Restored',
+    suspended: 'Suspended',
     disconnected: 'Disconnected'
   })[status] || 'Connected';
+}
+
+document.addEventListener('visibilitychange', () => {
+  pageSuspended = document.visibilityState === 'hidden';
+  if (pageSuspended) {
+    for (const sess of sessions) {
+      if (sess.connected && sess.sshSessionId) setSessionStatus(sess, 'suspended');
+    }
+    return;
+  }
+  resumeSuspendedSessions();
+});
+
+window.addEventListener('pageshow', () => {
+  pageSuspended = false;
+  resumeSuspendedSessions();
+});
+window.addEventListener('online', resumeSuspendedSessions);
+
+function resumeSuspendedSessions() {
+  for (const sess of sessions) {
+    if (!sess.manualClose && sess.sshSessionId && !sess.ws) {
+      setSessionStatus(sess, 'reconnecting');
+      reconnectSession(sess);
+    }
+  }
 }
 
 /* ─── [data-send] buttons ────────────────────────────────────────────────── */
@@ -1062,7 +1091,7 @@ function applySettings(settings) {
     fontFamily: settings.fontFamily || 'system',
     theme: settings.theme || 'tiny-dark',
     keepaliveIntervalSeconds: Number(settings.keepaliveIntervalSeconds) || 30,
-    disconnectTimeout: settings.disconnectTimeout || '30m',
+    disconnectTimeout: settings.disconnectTimeout || 'never',
     autoReconnect: settings.autoReconnect !== false,
     habits: Array.isArray(settings.habits) ? settings.habits : []
   };

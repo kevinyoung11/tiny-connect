@@ -732,7 +732,8 @@ label {
   border-color: rgba(0,212,170,.3);
 }
 .hud-state[data-status="detached"],
-.hud-state[data-status="reconnecting"] {
+.hud-state[data-status="reconnecting"],
+.hud-state[data-status="suspended"] {
   color: #e0af68;
   border-color: rgba(224,175,104,.35);
 }

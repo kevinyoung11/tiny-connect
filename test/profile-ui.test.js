@@ -31,6 +31,7 @@ test('terminal shell exposes recovery status, debug, snippets, and copy scopes',
   const html = readFileSync(resolve('public/index.html'), 'utf8');
 
   assert.ok(html.includes('id="hudState"'));
+  assert.ok(html.includes('id="useTmux" checked'));
   assert.ok(!html.includes('id="debugBtn"'));
   assert.ok(html.includes('id="settingsDebugBtn"'));
   assert.ok(html.includes('id="debugSheet"'));
