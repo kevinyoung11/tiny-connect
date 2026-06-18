@@ -18,6 +18,7 @@
   --hud-h:        48px;
   --tab-h:        38px;
   --mbar-h:       96px;
+  --shell-pad:    12px;
   --transition:   0.28s cubic-bezier(0.4,0,0.2,1);
 }
 
@@ -652,15 +653,20 @@ label {
 
 /* ─── HUD bar ─────────────────────────────────────────────────────────────── */
 .hud {
-  position: fixed; top: 0; left: 0; right: 0; z-index: 5;
-  height: calc(var(--hud-h) + env(safe-area-inset-top));
-  padding-top: env(safe-area-inset-top);
-  padding-left:  max(16px, env(safe-area-inset-left));
-  padding-right: max(12px, env(safe-area-inset-right));
+  position: fixed;
+  top: max(var(--shell-pad), env(safe-area-inset-top));
+  left: max(var(--shell-pad), env(safe-area-inset-left));
+  right: max(var(--shell-pad), env(safe-area-inset-right));
+  z-index: 5;
+  height: var(--hud-h);
+  padding-left:  12px;
+  padding-right: 12px;
   background: rgba(7,7,12,.9);
   backdrop-filter: blur(24px);
   -webkit-backdrop-filter: blur(24px);
   border-bottom: 1px solid var(--border);
+  border: 1px solid var(--border);
+  border-radius: 12px;
   display: flex; align-items: center; justify-content: space-between; gap: 12px;
 
   transform: translateY(-110%);
@@ -744,13 +750,16 @@ label {
 /* ─── Tab bar ────────────────────────────────────────────────────────────── */
 .tab-bar {
   position: fixed; z-index: 4;
-  top: calc(var(--hud-h) + env(safe-area-inset-top));
-  left: 0; right: 0;
+  top: calc(max(var(--shell-pad), env(safe-area-inset-top)) + var(--hud-h) + 8px);
+  left: max(var(--shell-pad), env(safe-area-inset-left));
+  right: max(var(--shell-pad), env(safe-area-inset-right));
   height: var(--tab-h);
   background: rgba(6,6,10,.9);
   backdrop-filter: blur(18px);
   -webkit-backdrop-filter: blur(18px);
   border-bottom: 1px solid var(--border);
+  border: 1px solid var(--border);
+  border-radius: 12px;
   display: flex; align-items: center;
   opacity: 0; pointer-events: none;
   transition: opacity var(--transition);
@@ -825,17 +834,21 @@ label {
 /* ─── Terminal workspace ─────────────────────────────────────────────────── */
 .workspace {
   position: fixed;
-  inset: max(6px, env(safe-area-inset-top)) 6px 6px;
+  inset:
+    max(var(--shell-pad), env(safe-area-inset-top))
+    max(var(--shell-pad), env(safe-area-inset-right))
+    max(var(--shell-pad), env(safe-area-inset-bottom))
+    max(var(--shell-pad), env(safe-area-inset-left));
   transition: top var(--transition), bottom var(--transition);
 }
 .workspace.hud-on {
-  top: calc(var(--hud-h) + env(safe-area-inset-top) + 6px);
+  top: calc(max(var(--shell-pad), env(safe-area-inset-top)) + var(--hud-h) + 8px);
 }
 .workspace.hud-on.tabs-on {
-  top: calc(var(--hud-h) + var(--tab-h) + env(safe-area-inset-top) + 6px);
+  top: calc(max(var(--shell-pad), env(safe-area-inset-top)) + var(--hud-h) + var(--tab-h) + 16px);
 }
 .workspace.mbar-on {
-  bottom: calc(var(--mbar-h) + env(safe-area-inset-bottom) + 6px);
+  bottom: calc(var(--mbar-h) + max(var(--shell-pad), env(safe-area-inset-bottom)) + 8px);
 }
 
 #termContainer {
@@ -858,14 +871,19 @@ label {
 
 /* ─── Mobile bar ─────────────────────────────────────────────────────────── */
 .mbar {
-  position: fixed; bottom: 0; left: 0; right: 0; z-index: 5;
+  position: fixed;
+  bottom: max(var(--shell-pad), env(safe-area-inset-bottom));
+  left: max(var(--shell-pad), env(safe-area-inset-left));
+  right: max(var(--shell-pad), env(safe-area-inset-right));
+  z-index: 5;
   height: var(--mbar-h);
   padding: 8px 10px;
-  padding-bottom: max(10px, env(safe-area-inset-bottom));
   background: rgba(8,8,13,.95);
   backdrop-filter: blur(22px);
   -webkit-backdrop-filter: blur(22px);
   border-top: 1px solid var(--border);
+  border: 1px solid var(--border);
+  border-radius: 12px;
   display: flex; flex-direction: column; gap: 7px;
 
   transform: translateY(110%);
@@ -1078,7 +1096,18 @@ label {
 }
 
 @media (max-width: 639px) {
-  .hud-actions .action-btn:not(.action-btn--close):not(#filesBtn):not(#settingsBtn):not(#pasteBtn) { display: none; }
+  :root {
+    --shell-pad: 8px;
+  }
+  .hud-actions .action-btn:not(.action-btn--close):not(#settingsBtn):not(#pasteBtn) { display: none; }
+  .hud {
+    gap: 8px;
+    padding-left: 10px;
+    padding-right: 8px;
+  }
+  .hud-state {
+    max-width: 104px;
+  }
   /* Full-width modal on very small screens */
   .modal {
     width: calc(100dvw - 16px);
