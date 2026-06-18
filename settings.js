@@ -2,7 +2,8 @@ export const defaultSettings = {
   fontSize: 14,
   keepaliveIntervalSeconds: 30,
   disconnectTimeout: '30m',
-  autoReconnect: true
+  autoReconnect: true,
+  habits: []
 };
 
 const disconnectTimeouts = new Set(['5m', '30m', '2h', 'never']);
@@ -21,8 +22,14 @@ export function normalizeSettings(input = {}) {
       : defaultSettings.disconnectTimeout,
     autoReconnect: typeof input.autoReconnect === 'boolean'
       ? input.autoReconnect
-      : defaultSettings.autoReconnect
+      : defaultSettings.autoReconnect,
+    habits: normalizeHabits(input.habits)
   };
+}
+
+export function getDefaultStartupHabit(settings = {}) {
+  const normalized = normalizeSettings(settings);
+  return normalized.habits.find((habit) => habit.enabled) || null;
 }
 
 export function disconnectTimeoutToMs(value) {
@@ -38,4 +45,18 @@ function clampNumber(value, min, max, fallback) {
   const number = Number(value);
   if (!Number.isFinite(number)) return fallback;
   return Math.min(max, Math.max(min, Math.round(number)));
+}
+
+function normalizeHabits(value) {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((habit, index) => ({
+      id: String(habit?.id || `habit-${index + 1}`).trim(),
+      name: String(habit?.name || '').trim(),
+      command: String(habit?.command || '').trim(),
+      priority: clampNumber(habit?.priority, 1, 999, index + 1),
+      enabled: habit?.enabled !== false
+    }))
+    .filter((habit) => habit.id && habit.name && habit.command)
+    .sort((a, b) => a.priority - b.priority || a.name.localeCompare(b.name));
 }

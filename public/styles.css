@@ -395,6 +395,53 @@ label {
   user-select: text;
   -webkit-user-select: text;
 }
+.settings-row-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.mini-btn {
+  height: 30px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--surf);
+  color: var(--text-2);
+  font-size: 12px;
+}
+.habit-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.habit-empty {
+  color: var(--text-2);
+  font-size: 13px;
+}
+.habit-row {
+  display: grid;
+  grid-template-columns: 34px 72px minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  background: rgba(255,255,255,.03);
+}
+.habit-row .habit-command {
+  grid-column: 1 / -1;
+  min-height: 64px;
+}
+.habit-row .habit-enabled {
+  width: 20px;
+  height: 20px;
+}
+.habit-row .habit-priority,
+.habit-row .habit-name {
+  height: 36px;
+  font-size: 13px;
+}
 
 /* ─── SFTP sheet ─────────────────────────────────────────────────────────── */
 .sheet--sftp { max-height: 82dvh; }

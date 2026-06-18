@@ -17,7 +17,7 @@ import {
   getSupabaseConfigStatus,
   isSupabaseConfigured
 } from './supabase-store.js';
-import { disconnectTimeoutToMs, normalizeSettings } from './settings.js';
+import { disconnectTimeoutToMs, getDefaultStartupHabit, normalizeSettings } from './settings.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const port = Number(process.env.PORT || 8787);
@@ -399,9 +399,15 @@ function createSshTransport(ws, config) {
       });
 
       if (config.tmux) {
-        setTimeout(() => { if (stream) stream.write('tmux new-session -A -s tc\r'); }, 400);
+        setTimeout(() => {
+          if (!stream) return;
+          stream.write('tmux new-session -A -s tc\r');
+          writeStartupHabit(stream, config.settings, 700);
+        }, 400);
       } else if (startupCommand) {
         stream.write(`${startupCommand}\r`);
+      } else {
+        writeStartupHabit(stream, config.settings, 200);
       }
     });
   });
@@ -435,6 +441,14 @@ function createSshTransport(ws, config) {
       else detachOrCloseSshSession(sessionId);
     }
   };
+}
+
+function writeStartupHabit(stream, settings, delayMs) {
+  const habit = getDefaultStartupHabit(settings);
+  if (!habit) return;
+  setTimeout(() => {
+    if (stream) stream.write(`${habit.command}\r`);
+  }, delayMs);
 }
 
 function createAttachedSshTransport(ws, sessionId, session) {

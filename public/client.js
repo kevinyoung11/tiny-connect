@@ -90,6 +90,8 @@ const fontPreview       = document.querySelector('#fontPreview');
 const keepaliveInput    = document.querySelector('#keepaliveInput');
 const disconnectTimeoutInput = document.querySelector('#disconnectTimeoutInput');
 const autoReconnectInput = document.querySelector('#autoReconnectInput');
+const addHabitBtn       = document.querySelector('#addHabitBtn');
+const habitList         = document.querySelector('#habitList');
 
 /* ─── Session class ──────────────────────────────────────────────────────── */
 class Session {
@@ -157,7 +159,8 @@ let appSettings   = {
   fontSize: 14,
   keepaliveIntervalSeconds: 30,
   disconnectTimeout: '30m',
-  autoReconnect: true
+  autoReconnect: true,
+  habits: []
 };
 let sftpCwd       = '.';
 let sftpSessionId = null;
@@ -429,6 +432,16 @@ closeKeySheet.addEventListener('click', closeKeySheet_fn);
 settingsBtn?.addEventListener('click', openSettingsSheet);
 modalSettingsBtn?.addEventListener('click', openSettingsSheet);
 closeSettingsSheetBtn?.addEventListener('click', closeSettingsSheetFn);
+addHabitBtn?.addEventListener('click', () => {
+  appSettings.habits.push({
+    id: `habit-${Date.now()}`,
+    name: 'Open Codex',
+    command: 'codex',
+    priority: appSettings.habits.length + 1,
+    enabled: true
+  });
+  renderSettingsForm();
+});
 fontSizeInput?.addEventListener('input', () => {
   fontSizeValue.textContent = fontSizeInput.value;
   applySettings({ ...appSettings, fontSize: Number(fontSizeInput.value) });
@@ -440,7 +453,8 @@ settingsForm?.addEventListener('submit', async e => {
     fontSize: Number(fontSizeInput.value),
     keepaliveIntervalSeconds: Number(keepaliveInput.value),
     disconnectTimeout: disconnectTimeoutInput.value,
-    autoReconnect: autoReconnectInput.checked
+    autoReconnect: autoReconnectInput.checked,
+    habits: readHabitForm()
   };
   try {
     const res = await fetch('/api/settings', withDeviceIdentity({
@@ -754,7 +768,8 @@ function applySettings(settings) {
     fontSize: Number(settings.fontSize) || 14,
     keepaliveIntervalSeconds: Number(settings.keepaliveIntervalSeconds) || 30,
     disconnectTimeout: settings.disconnectTimeout || '30m',
-    autoReconnect: settings.autoReconnect !== false
+    autoReconnect: settings.autoReconnect !== false,
+    habits: Array.isArray(settings.habits) ? settings.habits : []
   };
   TERM_OPTS.fontSize = appSettings.fontSize;
   if (fontPreview) fontPreview.style.fontSize = `${appSettings.fontSize}px`;
@@ -771,6 +786,55 @@ function renderSettingsForm() {
   keepaliveInput.value = String(appSettings.keepaliveIntervalSeconds);
   disconnectTimeoutInput.value = appSettings.disconnectTimeout;
   autoReconnectInput.checked = appSettings.autoReconnect;
+  renderHabits();
+}
+
+function renderHabits() {
+  if (!habitList) return;
+  habitList.innerHTML = '';
+  if (!appSettings.habits.length) {
+    const empty = document.createElement('div');
+    empty.className = 'habit-empty';
+    empty.textContent = 'No startup habits';
+    habitList.append(empty);
+    return;
+  }
+  for (const habit of appSettings.habits) {
+    const row = document.createElement('div');
+    row.className = 'habit-row';
+    row.dataset.id = habit.id;
+    row.innerHTML = `
+      <input class="habit-enabled" type="checkbox" ${habit.enabled ? 'checked' : ''} aria-label="Enabled" />
+      <input class="habit-priority" type="number" min="1" max="999" value="${escapeAttr(habit.priority)}" aria-label="Priority" />
+      <input class="habit-name" type="text" value="${escapeAttr(habit.name)}" placeholder="Name" />
+      <textarea class="habit-command" rows="2" placeholder="cd ~/project && codex">${escapeHtml(habit.command)}</textarea>
+      <button type="button" class="mini-btn habit-delete">Delete</button>
+    `;
+    row.querySelector('.habit-delete').addEventListener('click', () => {
+      appSettings.habits = appSettings.habits.filter((item) => item.id !== habit.id);
+      renderSettingsForm();
+    });
+    habitList.append(row);
+  }
+}
+
+function readHabitForm() {
+  if (!habitList) return [];
+  return Array.from(habitList.querySelectorAll('.habit-row')).map((row, index) => ({
+    id: row.dataset.id || `habit-${index + 1}`,
+    enabled: row.querySelector('.habit-enabled').checked,
+    priority: Number(row.querySelector('.habit-priority').value) || index + 1,
+    name: row.querySelector('.habit-name').value,
+    command: row.querySelector('.habit-command').value
+  }));
+}
+
+function escapeHtml(value) {
+  return String(value).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function escapeAttr(value) {
+  return escapeHtml(value).replace(/"/g, '&quot;');
 }
 
 keyIdInput?.addEventListener('change', () => {
