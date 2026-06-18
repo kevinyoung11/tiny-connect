@@ -1,6 +1,6 @@
 import os from 'node:os';
 import path from 'node:path';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import process from 'node:process';
 import fs from 'node:fs';
 import { spawn } from 'node:child_process';
@@ -132,7 +132,7 @@ app.get('/api/settings', async (req, res) => {
   try {
     const scope = await getRequestScope(req);
     const settings = normalizeSettings(await userStore.getUserSettings(scope));
-    res.json({ settings });
+    res.json({ settings, user: publicUserScope(scope) });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -145,7 +145,7 @@ app.post('/api/settings', async (req, res) => {
       ...scope,
       settings: normalizeSettings(req.body?.settings || {})
     });
-    res.json({ settings });
+    res.json({ settings: normalizeSettings(settings), user: publicUserScope(scope) });
   } catch (error) {
     res.status(400).json({ error: error.message });
   }
@@ -158,6 +158,12 @@ async function getRequestScope(req) {
     userAgent: req.get('user-agent') || ''
   });
   return { userId: user.id };
+}
+
+function publicUserScope(scope) {
+  return {
+    idHash: createHash('sha256').update(scope.userId).digest('hex').slice(0, 12)
+  };
 }
 
 async function getSocketScope(message) {

@@ -249,7 +249,7 @@ export function createSupabaseUserStore() {
           .upsert({ user_id: userId, settings: settings || {}, updated_at: new Date().toISOString() }, { onConflict: 'user_id' }),
         'upsert user_settings'
       );
-      return settings || {};
+      return this.getUserSettings({ userId });
     }
   };
 }
