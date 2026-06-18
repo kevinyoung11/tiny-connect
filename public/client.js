@@ -162,6 +162,7 @@ class Session {
     this.connected = false;
     this.status = 'disconnected';
     this.reconnectTimer = null;
+    this.heartbeatTimer = null;
     this.manualClose = false;
     this.commandHistory = [];
     this.historyIndex = -1;
@@ -212,6 +213,7 @@ class Session {
 
   close() {
     clearTimeout(this.reconnectTimer);
+    stopHeartbeat(this);
     this.manualClose = true;
     this.send({ type: 'close' });
     this.ws?.close();
@@ -272,10 +274,12 @@ function doConnect() {
     showMbar();
     setActiveSession(sess);
     setConnecting(false);
+    startHeartbeat(sess);
   });
 
   socket.addEventListener('message', ev => {
     const msg = JSON.parse(ev.data);
+    if (msg.type === 'heartbeat') return;
     if (msg.type === 'data')    sess.term.write(msg.data);
     if (msg.type === 'session') { sess.sshSessionId = msg.id; if (sess === activeSession) updateHud(); }
     if (msg.type === 'status')  setSessionStatus(sess, msg.status, msg.message);
@@ -287,6 +291,7 @@ function doConnect() {
 }
 
 function onSessionDisconnect(sess, reason) {
+  stopHeartbeat(sess);
   sess.ws = null;
   sess.connected = false;
   setSessionStatus(sess, sess.sshSessionId ? 'detached' : 'disconnected');
@@ -336,15 +341,18 @@ function reconnectSession(sess) {
       sessionId: sess.sshSessionId,
       deviceFingerprint: getDeviceFingerprint()
     }));
+    startHeartbeat(sess);
   });
   socket.addEventListener('message', ev => {
     const msg = JSON.parse(ev.data);
+    if (msg.type === 'heartbeat') return;
     if (msg.type === 'data') sess.term.write(msg.data);
     if (msg.type === 'session') sess.sshSessionId = msg.id;
     if (msg.type === 'status') setSessionStatus(sess, msg.status, msg.message);
     if (msg.type === 'exit') onSessionDisconnect(sess, `exited ${msg.exitCode}`);
   });
   socket.addEventListener('close', () => {
+    stopHeartbeat(sess);
     sess.ws = null;
     sess.connected = false;
     setSessionStatus(sess, 'detached');
@@ -353,6 +361,7 @@ function reconnectSession(sess) {
     scheduleReconnect(sess);
   });
   socket.addEventListener('error', () => {
+    stopHeartbeat(sess);
     sess.ws = null;
     sess.connected = false;
     setSessionStatus(sess, 'reconnecting');
@@ -363,6 +372,18 @@ function reconnectSession(sess) {
   setSessionStatus(sess, 'reconnecting');
   renderTabs();
   updateHud();
+}
+
+function startHeartbeat(sess) {
+  stopHeartbeat(sess);
+  sess.heartbeatTimer = setInterval(() => {
+    sess.send({ type: 'heartbeat', at: Date.now() });
+  }, 20000);
+}
+
+function stopHeartbeat(sess) {
+  clearInterval(sess.heartbeatTimer);
+  sess.heartbeatTimer = null;
 }
 
 /* ─── Multi-tab management ───────────────────────────────────────────────── */

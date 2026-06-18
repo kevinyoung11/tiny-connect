@@ -3,7 +3,7 @@ export const defaultSettings = {
   fontFamily: 'system',
   theme: 'tiny-dark',
   keepaliveIntervalSeconds: 30,
-  disconnectTimeout: '30m',
+  disconnectTimeout: 'never',
   autoReconnect: true,
   habits: []
 };

@@ -37,7 +37,7 @@ test('clamps terminal font size between 10 and 24 and keepalive interval', () =>
 });
 
 test('rejects unsupported disconnect timeout values by using default', () => {
-  assert.equal(normalizeSettings({ disconnectTimeout: 'forever-ish' }).disconnectTimeout, '30m');
+  assert.equal(normalizeSettings({ disconnectTimeout: 'forever-ish' }).disconnectTimeout, 'never');
 });
 
 test('normalizes startup habits and selects the enabled habit with highest priority', () => {

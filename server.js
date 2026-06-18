@@ -305,6 +305,8 @@ const wss = new WebSocketServer({ server, path: '/terminal' });
 function createTerminal(ws) {
   let transport = null;
   let connected = false;
+  ws.isAlive = true;
+  ws.on('pong', () => { ws.isAlive = true; });
   const fallbackTimer = setTimeout(() => {
     if (!connected) {
       connected = true;
@@ -315,6 +317,11 @@ function createTerminal(ws) {
   ws.on('message', (raw) => {
     let message;
     try { message = JSON.parse(raw.toString()); } catch { return; }
+
+    if (message.type === 'heartbeat') {
+      if (ws.readyState === ws.OPEN) ws.send(JSON.stringify({ type: 'heartbeat', at: Date.now() }));
+      return;
+    }
 
     if (message.type === 'connect' && !connected) {
       clearTimeout(fallbackTimer);
@@ -375,6 +382,20 @@ function createTerminal(ws) {
     if (transport) transport.close();
   });
 }
+
+const heartbeatInterval = setInterval(() => {
+  for (const ws of wss.clients) {
+    if (ws.isAlive === false) {
+      ws.terminate();
+      continue;
+    }
+    ws.isAlive = false;
+    try { ws.ping(); } catch (_) {}
+  }
+}, 25000);
+heartbeatInterval.unref?.();
+
+wss.on('close', () => clearInterval(heartbeatInterval));
 
 async function connectTransport(ws, message) {
   if (!supabaseConfigured) {
