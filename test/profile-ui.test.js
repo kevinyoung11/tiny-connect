@@ -58,16 +58,24 @@ test('mobile terminal viewport keeps native momentum scrolling enabled', () => {
   assert.match(js, /scrollback:\s*10000,/);
 });
 
-test('mobile terminal drag gestures scroll xterm directly', () => {
+test('mobile terminal drag gestures use an overlay and forward wheel input', () => {
   const js = readFileSync(resolve('public/client.js'), 'utf8');
 
-  assert.match(js, /this\.touchScrollCleanup\s*=\s*installTouchScrollBridge\(this\.el,\s*this\.term\);/);
-  assert.match(js, /function installTouchScrollBridge\(pane,\s*term\)/);
+  assert.match(js, /this\.touchScrollCleanup\s*=\s*installMobileTerminalScroller\(this\.el,\s*this\.term,\s*\(data\)\s*=>\s*this\.send\(\{ type:\s*'input',\s*data \}\)\);/);
+  assert.match(js, /function installMobileTerminalScroller\(pane,\s*term,\s*sendInput\)/);
+  assert.match(js, /className\s*=\s*'terminal-scroll-catcher'/);
   assert.match(js, /term\.scrollLines\(lines\);/);
-  assert.match(js, /event\.preventDefault\(\);/);
-  assert.match(js, /const touchOptions = \{ passive: false, capture: true \};/);
-  assert.match(js, /addEventListener\('touchmove', onTouchMove, touchOptions\);/);
+  assert.match(js, /sendInput\(wheelSequence\(lines\)\);/);
+  assert.match(js, /function wheelSequence\(lines\)/);
+  assert.match(js, /addEventListener\('pointermove', onPointerMove\);/);
   assert.match(js, /this\.touchScrollCleanup\?\.\(\);/);
+});
+
+test('mobile terminal scroll catcher only intercepts coarse pointer devices', () => {
+  const css = readFileSync(resolve('public/styles.css'), 'utf8');
+
+  assert.match(css, /\.terminal-scroll-catcher[^{]*\{[^}]*position:\s*absolute;[^}]*pointer-events:\s*none;/s);
+  assert.match(css, /@media\s*\(pointer:\s*coarse\)[\s\S]*\.terminal-scroll-catcher[^{]*\{[^}]*pointer-events:\s*auto;[^}]*touch-action:\s*none;/s);
 });
 
 test('renders saved hosts as menu items with inline delete buttons', () => {

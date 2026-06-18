@@ -59,7 +59,7 @@ export function buildTmuxStartupCommand(settings = {}, sessionName = 'tc') {
     ? `tmux new-session -d -s ${safeSessionName} ${shellQuote(habit.command)}`
     : `tmux new-session -d -s ${safeSessionName}`;
 
-  return `tmux has-session -t ${safeSessionName} 2>/dev/null || ${createCommand}; tmux attach-session -t ${safeSessionName}`;
+  return `tmux has-session -t ${safeSessionName} 2>/dev/null || ${createCommand}; tmux set-option -g mouse on; tmux attach-session -t ${safeSessionName}`;
 }
 
 export function disconnectTimeoutToMs(value) {

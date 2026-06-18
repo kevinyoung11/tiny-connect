@@ -185,7 +185,7 @@ class Session {
       this.term.unicode.activeVersion = '11';
     } catch (_) {}
     this.term.open(this.el);
-    this.touchScrollCleanup = installTouchScrollBridge(this.el, this.term);
+    this.touchScrollCleanup = installMobileTerminalScroller(this.el, this.term, (data) => this.send({ type: 'input', data }));
     this.term.onData(data => this.send({ type: 'input', data }));
   }
 
@@ -225,12 +225,16 @@ class Session {
   }
 }
 
-function installTouchScrollBridge(pane, term) {
+function installMobileTerminalScroller(pane, term, sendInput) {
+  const catcher = document.createElement('div');
+  catcher.className = 'terminal-scroll-catcher';
+  pane.append(catcher);
+
   let startX = 0;
   let lastY = 0;
   let pendingPixels = 0;
+  let pointerId = null;
   let dragging = false;
-  const touchOptions = { passive: false, capture: true };
 
   const lineHeight = () => {
     const screen = pane.querySelector('.xterm-screen');
@@ -238,21 +242,22 @@ function installTouchScrollBridge(pane, term) {
     return Number.isFinite(height) && height > 0 ? height : (term.options.fontSize || 14) * (term.options.lineHeight || 1.3);
   };
 
-  const onTouchStart = (event) => {
-    if (event.touches.length !== 1 || event.target.closest('button,input,textarea,select')) return;
-    const touch = event.touches[0];
-    startX = touch.clientX;
-    lastY = touch.clientY;
+  const onPointerDown = (event) => {
+    if (event.pointerType === 'mouse' || event.target.closest('button,input,textarea,select')) return;
+    pointerId = event.pointerId;
+    startX = event.clientX;
+    lastY = event.clientY;
     pendingPixels = 0;
     dragging = true;
+    catcher.setPointerCapture?.(event.pointerId);
+    event.preventDefault();
   };
 
-  const onTouchMove = (event) => {
-    if (!dragging || event.touches.length !== 1) return;
-    const touch = event.touches[0];
-    const deltaY = lastY - touch.clientY;
-    const deltaX = Math.abs(touch.clientX - startX);
-    lastY = touch.clientY;
+  const onPointerMove = (event) => {
+    if (!dragging || event.pointerId !== pointerId) return;
+    const deltaY = lastY - event.clientY;
+    const deltaX = Math.abs(event.clientX - startX);
+    lastY = event.clientY;
 
     if (Math.abs(deltaY) < 1 || deltaX > Math.abs(deltaY) * 1.4) return;
 
@@ -261,26 +266,33 @@ function installTouchScrollBridge(pane, term) {
     if (lines === 0) return;
 
     term.scrollLines(lines);
+    sendInput(wheelSequence(lines));
     pendingPixels -= lines * lineHeight();
     event.preventDefault();
   };
 
-  const onTouchEnd = () => {
+  const onPointerEnd = (event) => {
+    if (event.pointerId !== pointerId) return;
+    catcher.releasePointerCapture?.(event.pointerId);
+    pointerId = null;
     dragging = false;
     pendingPixels = 0;
   };
 
-  pane.addEventListener('touchstart', onTouchStart, touchOptions);
-  pane.addEventListener('touchmove', onTouchMove, touchOptions);
-  pane.addEventListener('touchend', onTouchEnd, touchOptions);
-  pane.addEventListener('touchcancel', onTouchEnd, touchOptions);
+  catcher.addEventListener('pointerdown', onPointerDown);
+  catcher.addEventListener('pointermove', onPointerMove);
+  catcher.addEventListener('pointerup', onPointerEnd);
+  catcher.addEventListener('pointercancel', onPointerEnd);
 
   return () => {
-    pane.removeEventListener('touchstart', onTouchStart, touchOptions);
-    pane.removeEventListener('touchmove', onTouchMove, touchOptions);
-    pane.removeEventListener('touchend', onTouchEnd, touchOptions);
-    pane.removeEventListener('touchcancel', onTouchEnd, touchOptions);
+    catcher.remove();
   };
+}
+
+function wheelSequence(lines) {
+  const amount = Math.min(8, Math.abs(lines));
+  const code = lines > 0 ? '\x1b[<64;1;1M\x1b[<64;1;1m' : '\x1b[<65;1;1M\x1b[<65;1;1m';
+  return code.repeat(amount);
 }
 
 /* ─── State ──────────────────────────────────────────────────────────────── */

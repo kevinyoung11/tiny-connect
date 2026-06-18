@@ -67,6 +67,6 @@ test('builds tmux startup command that only runs habit for a new session', () =>
 
   assert.equal(
     command,
-    "tmux has-session -t 'tc' 2>/dev/null || tmux new-session -d -s 'tc' 'cd ~/code && codex'; tmux attach-session -t 'tc'"
+    "tmux has-session -t 'tc' 2>/dev/null || tmux new-session -d -s 'tc' 'cd ~/code && codex'; tmux set-option -g mouse on; tmux attach-session -t 'tc'"
   );
 });

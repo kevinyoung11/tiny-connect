@@ -881,6 +881,13 @@ label {
 }
 .terminal-pane[hidden] { display: none !important; }
 
+.terminal-scroll-catcher {
+  position: absolute;
+  inset: 8px;
+  z-index: 2;
+  pointer-events: none;
+}
+
 /* Make xterm fill */
 .terminal-pane .xterm          { height: 100%; }
 .terminal-pane .xterm-viewport {
@@ -889,6 +896,13 @@ label {
   -webkit-overflow-scrolling: touch;
   touch-action: pan-y;
   overscroll-behavior: contain;
+}
+
+@media (pointer: coarse) {
+  .terminal-scroll-catcher {
+    pointer-events: auto;
+    touch-action: none;
+  }
 }
 
 /* ─── Mobile bar ─────────────────────────────────────────────────────────── */
