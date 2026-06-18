@@ -121,6 +121,7 @@ export async function initializeSupabaseSchema(pool) {
   `);
   await pool.query('CREATE UNIQUE INDEX IF NOT EXISTS user_devices_fp_idx ON user_devices(device_fingerprint)');
   await pool.query('CREATE INDEX IF NOT EXISTS ssh_keys_user_idx ON ssh_keys(user_id, created_at ASC)');
+  await pool.query('CREATE UNIQUE INDEX IF NOT EXISTS conn_profiles_user_name_uidx ON connection_profiles(user_id, name)');
   await pool.query('CREATE INDEX IF NOT EXISTS conn_profiles_user_idx ON connection_profiles(user_id, created_at ASC)');
   await enablePermissiveRls(pool, [
     'app_users',
@@ -351,17 +352,27 @@ export function createSupabaseProfileStore() {
       requireUserId({ userId });
       const id = `${slugify(name, 'profile')}-${randomBytes(4).toString('hex')}`;
       await sbCheck(
-        await sb().from('connection_profiles').insert({
-          id, user_id: userId,
-          name: name.trim(), host: host.trim(),
-          port: Number(port) || 22, username: username.trim(),
-          key_id: keyId || null,
-          passphrase: String(passphrase || ''),
-          tmux: Boolean(tmux)
-        }),
+        await sb().from('connection_profiles')
+          .delete()
+          .eq('user_id', userId)
+          .eq('name', name.trim()),
+        'delete duplicate connection_profiles'
+      );
+      const saved = await sbCheck(
+        await sb().from('connection_profiles')
+          .insert({
+            id, user_id: userId,
+            name: name.trim(), host: host.trim(),
+            port: Number(port) || 22, username: username.trim(),
+            key_id: keyId || null,
+            passphrase: String(passphrase || ''),
+            tmux: Boolean(tmux)
+          })
+          .select('id, name, host, port, username, key_id, passphrase, tmux')
+          .maybeSingle(),
         'insert connection_profiles'
       );
-      return { id, name: name.trim(), host: host.trim(), port: Number(port) || 22, username: username.trim(), keyId: keyId || null, passphrase: String(passphrase || ''), tmux: Boolean(tmux) };
+      return { ...saved, keyId: saved.key_id };
     },
 
     async deleteProfile(id, options = {}) {
