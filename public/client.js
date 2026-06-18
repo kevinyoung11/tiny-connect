@@ -230,6 +230,7 @@ function installTouchScrollBridge(pane, term) {
   let lastY = 0;
   let pendingPixels = 0;
   let dragging = false;
+  const touchOptions = { passive: false, capture: true };
 
   const lineHeight = () => {
     const screen = pane.querySelector('.xterm-screen');
@@ -269,16 +270,16 @@ function installTouchScrollBridge(pane, term) {
     pendingPixels = 0;
   };
 
-  pane.addEventListener('touchstart', onTouchStart, { passive: true });
-  pane.addEventListener('touchmove', onTouchMove, { passive: false });
-  pane.addEventListener('touchend', onTouchEnd, { passive: true });
-  pane.addEventListener('touchcancel', onTouchEnd, { passive: true });
+  pane.addEventListener('touchstart', onTouchStart, touchOptions);
+  pane.addEventListener('touchmove', onTouchMove, touchOptions);
+  pane.addEventListener('touchend', onTouchEnd, touchOptions);
+  pane.addEventListener('touchcancel', onTouchEnd, touchOptions);
 
   return () => {
-    pane.removeEventListener('touchstart', onTouchStart);
-    pane.removeEventListener('touchmove', onTouchMove);
-    pane.removeEventListener('touchend', onTouchEnd);
-    pane.removeEventListener('touchcancel', onTouchEnd);
+    pane.removeEventListener('touchstart', onTouchStart, touchOptions);
+    pane.removeEventListener('touchmove', onTouchMove, touchOptions);
+    pane.removeEventListener('touchend', onTouchEnd, touchOptions);
+    pane.removeEventListener('touchcancel', onTouchEnd, touchOptions);
   };
 }
 

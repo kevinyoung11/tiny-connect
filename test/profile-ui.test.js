@@ -65,6 +65,8 @@ test('mobile terminal drag gestures scroll xterm directly', () => {
   assert.match(js, /function installTouchScrollBridge\(pane,\s*term\)/);
   assert.match(js, /term\.scrollLines\(lines\);/);
   assert.match(js, /event\.preventDefault\(\);/);
+  assert.match(js, /const touchOptions = \{ passive: false, capture: true \};/);
+  assert.match(js, /addEventListener\('touchmove', onTouchMove, touchOptions\);/);
   assert.match(js, /this\.touchScrollCleanup\?\.\(\);/);
 });
 
