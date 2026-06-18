@@ -692,6 +692,30 @@ label {
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 
+.hud-state {
+  flex: none;
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--text-2);
+  font-size: 11px;
+}
+.hud-state[data-status="connected"],
+.hud-state[data-status="attached_tmux"],
+.hud-state[data-status="restored"] {
+  color: var(--accent);
+  border-color: rgba(0,212,170,.3);
+}
+.hud-state[data-status="detached"],
+.hud-state[data-status="reconnecting"] {
+  color: #e0af68;
+  border-color: rgba(224,175,104,.35);
+}
+
 .hud-actions { display: flex; align-items: center; gap: 4px; flex: none; }
 
 .action-btn {
@@ -800,17 +824,18 @@ label {
 
 /* ─── Terminal workspace ─────────────────────────────────────────────────── */
 .workspace {
-  position: fixed; inset: 0;
+  position: fixed;
+  inset: max(6px, env(safe-area-inset-top)) 6px 6px;
   transition: top var(--transition), bottom var(--transition);
 }
 .workspace.hud-on {
-  top: calc(var(--hud-h) + env(safe-area-inset-top));
+  top: calc(var(--hud-h) + env(safe-area-inset-top) + 6px);
 }
 .workspace.hud-on.tabs-on {
-  top: calc(var(--hud-h) + var(--tab-h) + env(safe-area-inset-top));
+  top: calc(var(--hud-h) + var(--tab-h) + env(safe-area-inset-top) + 6px);
 }
 .workspace.mbar-on {
-  bottom: calc(var(--mbar-h) + env(safe-area-inset-bottom));
+  bottom: calc(var(--mbar-h) + env(safe-area-inset-bottom) + 6px);
 }
 
 #termContainer {
@@ -820,7 +845,10 @@ label {
 
 .terminal-pane {
   position: absolute; inset: 0;
-  padding: 4px 4px 0;
+  padding: 8px;
+  border: 1px solid rgba(255,255,255,.05);
+  border-radius: 10px;
+  background: rgba(0,0,0,.08);
 }
 .terminal-pane[hidden] { display: none !important; }
 
@@ -888,9 +916,16 @@ label {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 10px;
   padding: max(12px, env(safe-area-inset-top)) 14px 10px;
   border-bottom: 1px solid var(--border);
   color: var(--text);
+}
+.copy-actions {
+  display: flex;
+  gap: 6px;
+  margin-left: auto;
+  overflow-x: auto;
 }
 #copyText {
   min-height: 0;
@@ -911,6 +946,7 @@ label {
   flex: 1; height: 40px;
   border-radius: 9px;
   font: 15px var(--mono);
+  background: rgba(255,255,255,.06);
 }
 .cmd-send {
   width: 46px; height: 40px; flex: none;
@@ -927,6 +963,84 @@ label {
 .cmd-send:active {
   background: rgba(0,212,170,.32);
   transform: scale(.94);
+}
+
+.debug-sheet {
+  position: fixed;
+  z-index: 35;
+  top: 50%;
+  left: 50%;
+  width: min(720px, calc(100dvw - 24px));
+  max-height: calc(100dvh - 32px);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  padding: 0 18px 18px;
+  border: 1px solid var(--border-hi);
+  border-radius: var(--r-lg);
+  background: rgba(11,11,18,.99);
+  box-shadow: 0 40px 90px rgba(0,0,0,.75);
+  opacity: 0;
+  pointer-events: none;
+  transform: translate(-50%,-48%) scale(.96);
+  transition: opacity .2s ease, transform .22s ease;
+}
+.debug-sheet[hidden] { display: none; }
+.debug-sheet.open {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translate(-50%,-50%) scale(1);
+}
+.debug-sheet .sheet-head {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  margin: 0 -18px 12px;
+  padding: max(14px, env(safe-area-inset-top)) 18px 12px;
+  background: rgba(11,11,18,.99);
+  border-bottom: 1px solid rgba(255,255,255,.06);
+}
+.debug-tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.debug-tabs .active {
+  color: var(--accent);
+  border-color: rgba(0,212,170,.35);
+}
+.debug-list {
+  min-height: 180px;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  color: var(--text-2);
+}
+.debug-row {
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: rgba(255,255,255,.03);
+}
+.debug-row--ok,
+.debug-row--current {
+  border-color: rgba(0,212,170,.25);
+}
+.debug-row--error {
+  border-color: rgba(255,95,87,.3);
+}
+.debug-row-main {
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 650;
+}
+.debug-row-sub,
+.debug-row-msg {
+  margin-top: 4px;
+  font-size: 12px;
+  line-height: 1.35;
+  word-break: break-word;
 }
 
 /* ─── Toast notification ──────────────────────────────────────────────────── */

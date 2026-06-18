@@ -226,12 +226,15 @@ codex ready</pre>
       <div class="hud-left">
         <div class="dot" id="statusDot" aria-hidden="true"></div>
         <span class="hud-host" id="hudHost"></span>
+        <span class="hud-state" id="hudState">Disconnected</span>
       </div>
       <div class="hud-actions">
         <button type="button" class="action-btn" data-send="&#x3;" title="Ctrl-C">⌃C</button>
         <button type="button" class="action-btn" data-send="&#x1b;" title="Escape">Esc</button>
         <button type="button" class="action-btn" data-send="&#x9;" title="Tab">⇥</button>
         <button type="button" class="action-btn" id="pasteBtn" title="Paste">Paste</button>
+        <button type="button" class="action-btn" id="searchBtn" title="Search">Search</button>
+        <button type="button" class="action-btn" id="debugBtn" title="Debug">Debug</button>
         <button type="button" class="action-btn" id="filesBtn" title="Browse files" hidden>Files</button>
         <button type="button" class="action-btn" id="settingsBtn" title="Settings">Settings</button>
         <button type="button" class="action-btn action-btn--close" id="disconnectBtn" aria-label="Disconnect">✕</button>
@@ -256,6 +259,9 @@ codex ready</pre>
     <!-- Mobile control bar -->
     <div class="mbar" id="mbar" hidden>
       <div class="mbar-keys" id="mbarKeys">
+        <button class="mkey mkey-snippet" type="button" data-draft="git status">git status</button>
+        <button class="mkey mkey-snippet" type="button" data-draft="pwd">pwd</button>
+        <button class="mkey mkey-snippet" type="button" data-draft="ls -la">ls</button>
         <button class="mkey" data-send="&#x3;">⌃C</button>
         <button class="mkey" data-send="&#x1b;">Esc</button>
         <button class="mkey" data-send="&#x1;">⌃A</button>
@@ -285,9 +291,26 @@ codex ready</pre>
     <div class="copy-layer" id="copyLayer" hidden>
       <div class="copy-head">
         <strong>Copy Mode</strong>
+        <div class="copy-actions">
+          <button type="button" class="mini-btn" data-copy-scope="screen">Screen</button>
+          <button type="button" class="mini-btn" data-copy-scope="all">All</button>
+          <button type="button" class="mini-btn" data-copy-scope="tail">Last 80</button>
+        </div>
         <button type="button" class="btn-x" id="closeCopyLayer" aria-label="Close">✕</button>
       </div>
       <pre id="copyText"></pre>
+    </div>
+
+    <div class="debug-sheet" id="debugSheet" role="dialog" aria-modal="true" aria-label="Debug" hidden>
+      <div class="sheet-head">
+        <h2 class="sheet-title">Debug</h2>
+        <button type="button" class="btn-x" id="closeDebugSheet" aria-label="Close">✕</button>
+      </div>
+      <div class="debug-tabs">
+        <button type="button" class="mini-btn active" data-debug-tab="logs">Logs</button>
+        <button type="button" class="mini-btn" data-debug-tab="devices">Devices</button>
+      </div>
+      <div class="debug-list" id="debugList"></div>
     </div>
 
     <script type="module" src="/client.js"></script>

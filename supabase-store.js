@@ -119,16 +119,31 @@ export async function initializeSupabaseSchema(pool) {
       created_at TIMESTAMPTZ DEFAULT NOW()
     )
   `);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS connection_logs (
+      id         TEXT PRIMARY KEY,
+      user_id    TEXT NOT NULL REFERENCES app_users(id) ON DELETE CASCADE,
+      event      TEXT NOT NULL,
+      status     TEXT NOT NULL DEFAULT 'info',
+      host       TEXT,
+      username   TEXT,
+      message    TEXT,
+      meta       JSONB NOT NULL DEFAULT '{}'::jsonb,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    )
+  `);
   await pool.query('CREATE UNIQUE INDEX IF NOT EXISTS user_devices_fp_idx ON user_devices(device_fingerprint)');
   await pool.query('CREATE INDEX IF NOT EXISTS ssh_keys_user_idx ON ssh_keys(user_id, created_at ASC)');
   await pool.query('CREATE UNIQUE INDEX IF NOT EXISTS conn_profiles_user_name_uidx ON connection_profiles(user_id, name)');
   await pool.query('CREATE INDEX IF NOT EXISTS conn_profiles_user_idx ON connection_profiles(user_id, created_at ASC)');
+  await pool.query('CREATE INDEX IF NOT EXISTS connection_logs_user_created_idx ON connection_logs(user_id, created_at DESC)');
   await enablePermissiveRls(pool, [
     'app_users',
     'user_devices',
     'tiny_connect_user_settings',
     'ssh_keys',
-    'connection_profiles'
+    'connection_profiles',
+    'connection_logs'
   ]);
 
   _readyPools.add(pool);
@@ -297,6 +312,39 @@ export function createSupabaseUserStore() {
         }
       });
       return { id: match.user_id, authUserId: null, displayName: 'Anonymous device' };
+    },
+
+    async listDevices({ userId, deviceFingerprint }) {
+      requireUserId({ userId });
+      const currentFp = deviceFingerprint ? sanitizeFingerprint(deviceFingerprint) : '';
+      const result = await sb().from('user_devices')
+        .select('id, device_fingerprint, user_agent, created_at, last_seen_at')
+        .eq('user_id', userId)
+        .order('last_seen_at', { ascending: false });
+      if (result.error) throw new Error(result.error.message);
+      return (result.data || []).map((device) => ({
+        id: device.id,
+        idHash: createHash('sha256').update(device.device_fingerprint).digest('hex').slice(0, 12),
+        current: Boolean(currentFp && device.device_fingerprint === currentFp),
+        userAgent: device.user_agent || '',
+        createdAt: device.created_at,
+        lastSeenAt: device.last_seen_at
+      }));
+    },
+
+    async unlinkDevice({ userId, deviceId, deviceFingerprint }) {
+      requireUserId({ userId });
+      if (!deviceId) throw new Error('deviceId is required');
+      const currentFp = deviceFingerprint ? sanitizeFingerprint(deviceFingerprint) : '';
+      const result = await sb().from('user_devices')
+        .delete()
+        .eq('id', deviceId)
+        .eq('user_id', userId)
+        .neq('device_fingerprint', currentFp || '__none__')
+        .select('id')
+        .maybeSingle();
+      if (result.error) throw new Error(result.error.message);
+      if (!result.data) throw new Error('Device not found or cannot unlink current device');
     }
   };
 }
@@ -441,6 +489,70 @@ export function createSupabaseProfileStore() {
       if (!result.data) throw new Error('Profile not found');
     }
   };
+}
+
+/* ── Activity store ─────────────────────────────────────────────────────── */
+
+export function createSupabaseActivityStore() {
+  return {
+    async init() {
+      await ensureTables();
+    },
+
+    async logConnection({ userId, event, status = 'info', host, username, message, meta }) {
+      requireUserId({ userId });
+      await sbCheck(
+        await sb().from('connection_logs').insert({
+          id: `log_${randomUUID()}`,
+          user_id: userId,
+          event: sanitizeLogText(event, 80) || 'event',
+          status: ['info', 'ok', 'warn', 'error'].includes(status) ? status : 'info',
+          host: sanitizeLogText(host, 180),
+          username: sanitizeLogText(username, 120),
+          message: sanitizeLogText(message, 500),
+          meta: sanitizeLogMeta(meta)
+        }),
+        'insert connection_logs'
+      );
+    },
+
+    async listConnectionLogs(options = {}) {
+      const userId = requireUserId(options);
+      const limit = Math.min(200, Math.max(1, Number(options.limit) || 80));
+      const result = await sb().from('connection_logs')
+        .select('id, event, status, host, username, message, meta, created_at')
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false })
+        .limit(limit);
+      if (result.error) throw new Error(result.error.message);
+      return (result.data || []).map((row) => ({
+        id: row.id,
+        event: row.event,
+        status: row.status,
+        host: row.host || '',
+        username: row.username || '',
+        message: row.message || '',
+        meta: row.meta || {},
+        createdAt: row.created_at
+      }));
+    }
+  };
+}
+
+function sanitizeLogText(value, maxLength) {
+  if (value === undefined || value === null) return null;
+  const text = String(value).replace(/-----BEGIN[\s\S]*?-----END[\s\S]*?-----/g, '[redacted-key]');
+  return text.slice(0, maxLength);
+}
+
+function sanitizeLogMeta(meta) {
+  if (!meta || typeof meta !== 'object' || Array.isArray(meta)) return {};
+  const safe = {};
+  for (const [key, value] of Object.entries(meta)) {
+    if (/pass|key|secret|token/i.test(key)) continue;
+    safe[key] = typeof value === 'string' ? sanitizeLogText(value, 180) : value;
+  }
+  return safe;
 }
 
 /* ── Config check ───────────────────────────────────────────────────────── */

@@ -11,6 +11,7 @@ import { Client } from 'ssh2';
 import { WebSocketServer } from 'ws';
 import { buildConnectionConfig } from './connection-config.js';
 import {
+  createSupabaseActivityStore,
   createSupabaseKeyStore,
   createSupabaseProfileStore,
   createSupabaseUserStore,
@@ -32,6 +33,7 @@ const supabaseConfigured = isSupabaseConfigured();
 const keyStore = createSupabaseKeyStore(keysDir);
 const profileStore = createSupabaseProfileStore();
 const userStore = createSupabaseUserStore();
+const activityStore = createSupabaseActivityStore();
 
 // sessionId → { client, config, stream, ws, cleanupTimer, settings }
 const sshSessions = new Map();
@@ -174,6 +176,43 @@ app.post('/api/devices/link', async (req, res) => {
   }
 });
 
+app.get('/api/devices', async (req, res) => {
+  try {
+    const scope = await getRequestScope(req);
+    const devices = await userStore.listDevices({
+      ...scope,
+      deviceFingerprint: req.get('x-device-fingerprint')
+    });
+    res.json({ devices });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.delete('/api/devices/:id', async (req, res) => {
+  try {
+    const scope = await getRequestScope(req);
+    await userStore.unlinkDevice({
+      ...scope,
+      deviceId: req.params.id,
+      deviceFingerprint: req.get('x-device-fingerprint')
+    });
+    res.json({ ok: true });
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+app.get('/api/logs', async (req, res) => {
+  try {
+    const scope = await getRequestScope(req);
+    const logs = await activityStore.listConnectionLogs({ ...scope, limit: req.query.limit });
+    res.json({ logs });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 async function getRequestScope(req) {
   const deviceFingerprint = req.get('x-device-fingerprint');
   const user = await userStore.ensureUserForDevice({
@@ -294,6 +333,9 @@ function createTerminal(ws) {
       connected = true;
       const session = sshSessions.get(message.sessionId);
       if (!session) {
+        getSocketScope(message)
+          .then((scope) => logConnection(scope, 'reconnect_failed', 'error', {}, 'Session not found'))
+          .catch(() => {});
         sendData(ws, 'Reconnect failed: session not found\r\n');
         ws.close();
         return;
@@ -302,6 +344,8 @@ function createTerminal(ws) {
       session.ws = ws;
       transport = createAttachedSshTransport(ws, message.sessionId, session);
       ws.send(JSON.stringify({ type: 'session', id: message.sessionId }));
+      ws.send(JSON.stringify({ type: 'status', status: 'restored', message: 'Restored previous session' }));
+      logConnection(session.config, 'reconnect_success', 'ok', session.config, 'Restored previous session');
       sendData(ws, `Reconnected to ${session.config.username}@${session.config.host}\r\n`);
       return;
     }
@@ -309,6 +353,7 @@ function createTerminal(ws) {
     if (!transport) return;
 
     if (message.type === 'close') {
+      if (transport?.config) logConnection(transport.config, 'manual_close', 'info', transport.config, 'Manual close requested');
       transport.close({ force: true });
       return;
     }
@@ -339,6 +384,8 @@ async function connectTransport(ws, message) {
   const config = buildConnectionConfig(message.config || {}, {
     resolveKeyPath: (keyId) => `managed-key:${keyId}`
   });
+  config.userId = scope.userId;
+  logConnection(scope, 'connect_start', 'info', config, 'Connection requested');
   if (config.privateKeyPath?.startsWith('managed-key:')) {
     const keyId = config.privateKeyPath.slice('managed-key:'.length);
     config.privateKeyPath = await keyStore.getPrivateKeyPath(keyId, scope);
@@ -372,6 +419,7 @@ function createLocalTransport(ws, config) {
   bridge.on('exit', (exitCode) => sendExit(ws, exitCode));
 
   return {
+    config: null,
     input(data) { bridge.stdin.write(JSON.stringify({ type: 'input', data }) + '\n'); },
     resize(cols, rows) { bridge.stdin.write(JSON.stringify({ type: 'resize', cols, rows }) + '\n'); },
     close() { bridge.kill(); }
@@ -390,6 +438,7 @@ function createSshTransport(ws, config) {
       ws.send(JSON.stringify({ type: 'session', id: sessionId }));
     }
     sendData(ws, `SSH connected to ${config.username}@${config.host}\r\n`);
+    logConnection(config, 'connect_success', 'ok', config, config.tmux ? 'SSH connected; tmux attach requested' : 'SSH connected');
 
     client.shell({
       term: 'xterm-256color',
@@ -425,6 +474,7 @@ function createSshTransport(ws, config) {
         setTimeout(() => {
           if (!stream) return;
           stream.write(`${buildTmuxStartupCommand(config.settings)}\r`);
+          ws.send(JSON.stringify({ type: 'status', status: 'attached_tmux', message: 'Attached to tmux' }));
         }, 400);
       } else if (startupCommand) {
         stream.write(`${startupCommand}\r`);
@@ -436,6 +486,7 @@ function createSshTransport(ws, config) {
 
   client.on('error', (error) => {
     sshSessions.delete(sessionId);
+    logConnection(config, 'connect_error', 'error', config, error.message);
     sendData(ws, `SSH connection failed: ${error.message}\r\n`);
     ws.close();
   });
@@ -448,7 +499,7 @@ function createSshTransport(ws, config) {
       privateKey: fs.readFileSync(config.privateKeyPath),
       passphrase: config.passphrase || undefined,
       readyTimeout: 20000,
-      keepaliveInterval: config.settings.keepaliveIntervalSeconds * 1000
+      keepaliveInterval: settings.keepaliveIntervalSeconds * 1000
     });
   } catch (error) {
     sendData(ws, `SSH setup failed: ${error.message}\r\n`);
@@ -456,6 +507,7 @@ function createSshTransport(ws, config) {
   }
 
   return {
+    config,
     input(data) { if (stream) stream.write(data); },
     resize(cols, rows) { if (stream) stream.setWindow(rows, cols, 0, 0); },
     close(options = {}) {
@@ -475,6 +527,7 @@ function writeStartupHabit(stream, settings, delayMs) {
 
 function createAttachedSshTransport(ws, sessionId, session) {
   return {
+    config: session.config,
     input(data) { if (session.stream) session.stream.write(data); },
     resize(cols, rows) { if (session.stream) session.stream.setWindow(rows, cols, 0, 0); },
     close(options = {}) {
@@ -497,6 +550,7 @@ function detachOrCloseSshSession(sessionId) {
   const session = sshSessions.get(sessionId);
   if (!session) return;
   session.ws = null;
+  logConnection(session.config, 'detached', 'warn', session.config, 'Client detached');
   const timeoutMs = disconnectTimeoutToMs(session.settings.disconnectTimeout);
   if (timeoutMs === null) return;
   clearTimeout(session.cleanupTimer);
@@ -504,12 +558,31 @@ function detachOrCloseSshSession(sessionId) {
     const latest = sshSessions.get(sessionId);
     if (!latest || latest.ws) return;
     sshSessions.delete(sessionId);
+    logConnection(latest.config, 'session_closed', 'info', latest.config, 'Detached session cleanup timeout reached');
     if (latest.stream) latest.stream.close();
     latest.client.end();
   }, timeoutMs);
 }
 
 wss.on('connection', createTerminal);
+
+function logConnection(scopeOrConfig, event, status, config = {}, message = '', meta = {}) {
+  const userId = scopeOrConfig?.userId || config?.userId;
+  if (!userId || !supabaseConfigured) return;
+  activityStore.logConnection({
+    userId,
+    event,
+    status,
+    host: config.host,
+    username: config.username,
+    message,
+    meta: {
+      tmux: Boolean(config.tmux),
+      mode: config.mode || 'ssh',
+      ...meta
+    }
+  }).catch((error) => console.warn(`[logs] ${event} failed: ${error.message}`));
+}
 
 function sendData(ws, data) {
   if (ws.readyState === ws.OPEN) {
@@ -535,7 +608,7 @@ if (!process.env.VERCEL) {
 
 async function startServer() {
   if (supabaseConfigured) {
-    await Promise.all([keyStore.init(), profileStore.init(), userStore.init()]);
+    await Promise.all([keyStore.init(), profileStore.init(), userStore.init(), activityStore.init()]);
     console.log('[supabase] configured; stores initialized');
   } else {
     console.warn('[supabase] not configured; /api and SSH WebSocket connections will return configuration errors');

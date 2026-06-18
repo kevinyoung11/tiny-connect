@@ -27,6 +27,18 @@ test('connection modal removes the separate Saved tab', () => {
   assert.ok(!html.includes('id="deleteProfileBtn"'));
 });
 
+test('terminal shell exposes recovery status, debug, snippets, and copy scopes', () => {
+  const html = readFileSync(resolve('public/index.html'), 'utf8');
+
+  assert.ok(html.includes('id="hudState"'));
+  assert.ok(html.includes('id="debugBtn"'));
+  assert.ok(html.includes('id="debugSheet"'));
+  assert.ok(html.includes('data-draft="git status"'));
+  assert.ok(html.includes('data-copy-scope="screen"'));
+  assert.ok(html.includes('data-copy-scope="all"'));
+  assert.ok(html.includes('data-copy-scope="tail"'));
+});
+
 test('renders saved hosts as menu items with inline delete buttons', () => {
   const menu = createMenu();
 

@@ -1,5 +1,8 @@
 import { Terminal } from 'https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0/+esm';
 import { FitAddon } from 'https://cdn.jsdelivr.net/npm/@xterm/addon-fit@0.10.0/+esm';
+import { WebLinksAddon } from 'https://cdn.jsdelivr.net/npm/@xterm/addon-web-links@0.12.0/+esm';
+import { SearchAddon } from 'https://cdn.jsdelivr.net/npm/@xterm/addon-search@0.16.0/+esm';
+import { Unicode11Addon } from 'https://cdn.jsdelivr.net/npm/@xterm/addon-unicode11@0.9.0/+esm';
 import { getDeviceFingerprint, withDeviceIdentity } from './identity.js';
 import { applyProfileToConnectionForm, renderProfileMenu } from './profile-ui.js';
 
@@ -55,10 +58,13 @@ const profileSaveCancel = document.querySelector('#profileSaveCancel');
 const hud               = document.querySelector('#hud');
 const statusDot         = document.querySelector('#statusDot');
 const hudHost           = document.querySelector('#hudHost');
+const hudState          = document.querySelector('#hudState');
 const disconnectBtn     = document.querySelector('#disconnectBtn');
 const filesBtn          = document.querySelector('#filesBtn');
 const settingsBtn       = document.querySelector('#settingsBtn');
 const modalSettingsBtn  = document.querySelector('#modalSettingsBtn');
+const searchBtn         = document.querySelector('#searchBtn');
+const debugBtn          = document.querySelector('#debugBtn');
 const tabBar            = document.querySelector('#tabBar');
 const tabList           = document.querySelector('#tabList');
 const newTabBtn         = document.querySelector('#newTabBtn');
@@ -73,6 +79,9 @@ const copyModeBtn       = document.querySelector('#copyModeBtn');
 const copyLayer         = document.querySelector('#copyLayer');
 const closeCopyLayerBtn = document.querySelector('#closeCopyLayer');
 const copyText          = document.querySelector('#copyText');
+const debugSheet        = document.querySelector('#debugSheet');
+const closeDebugSheetBtn = document.querySelector('#closeDebugSheet');
+const debugList         = document.querySelector('#debugList');
 const sftpSheet         = document.querySelector('#sftpSheet');
 const closeSftpSheetBtn = document.querySelector('#closeSftpSheet');
 const sftpPathEl        = document.querySelector('#sftpPath');
@@ -102,8 +111,11 @@ class Session {
     this.ws = null;
     this.label = 'New Session';
     this.connected = false;
+    this.status = 'disconnected';
     this.reconnectTimer = null;
     this.manualClose = false;
+    this.commandHistory = [];
+    this.historyIndex = -1;
 
     this.el = document.createElement('div');
     this.el.className = 'terminal-pane';
@@ -112,7 +124,15 @@ class Session {
 
     this.term = new Terminal(TERM_OPTS);
     this.fitAddon = new FitAddon();
+    this.searchAddon = new SearchAddon();
     this.term.loadAddon(this.fitAddon);
+    this.term.loadAddon(new WebLinksAddon());
+    this.term.loadAddon(this.searchAddon);
+    try {
+      const unicode11 = new Unicode11Addon();
+      this.term.loadAddon(unicode11);
+      this.term.unicode.activeVersion = '11';
+    } catch (_) {}
     this.term.open(this.el);
     this.term.onData(data => this.send({ type: 'input', data }));
   }
@@ -165,6 +185,7 @@ let appSettings   = {
 };
 let sftpCwd       = '.';
 let sftpSessionId = null;
+let debugTab      = 'logs';
 
 /* ─── Init ───────────────────────────────────────────────────────────────── */
 openModal();
@@ -194,6 +215,7 @@ function doConnect() {
     }));
     sess.label = config.mode === 'ssh' ? `${config.username}@${config.host}` : 'local';
     sess.connected = true;
+    setSessionStatus(sess, config.tmux ? 'attaching_tmux' : 'connected');
     closeModal();
     showHud();
     showMbar();
@@ -205,6 +227,7 @@ function doConnect() {
     const msg = JSON.parse(ev.data);
     if (msg.type === 'data')    sess.term.write(msg.data);
     if (msg.type === 'session') { sess.sshSessionId = msg.id; if (sess === activeSession) updateHud(); }
+    if (msg.type === 'status')  setSessionStatus(sess, msg.status, msg.message);
     if (msg.type === 'exit')    onSessionDisconnect(sess, `exited ${msg.exitCode}`);
   });
 
@@ -215,6 +238,7 @@ function doConnect() {
 function onSessionDisconnect(sess, reason) {
   sess.ws = null;
   sess.connected = false;
+  setSessionStatus(sess, sess.sshSessionId ? 'detached' : 'disconnected');
   sess.term.writeln(`\r\n\x1b[2m── ${reason} ──\x1b[0m\r\n`);
   setConnecting(false);
   renderTabs();
@@ -246,6 +270,7 @@ disconnectBtn.addEventListener('click', () => {
 function scheduleReconnect(sess) {
   if (!appSettings.autoReconnect || !sess.sshSessionId) return;
   clearTimeout(sess.reconnectTimer);
+  setSessionStatus(sess, 'reconnecting');
   sess.reconnectTimer = setTimeout(() => reconnectSession(sess), 1200);
 }
 
@@ -265,11 +290,13 @@ function reconnectSession(sess) {
     const msg = JSON.parse(ev.data);
     if (msg.type === 'data') sess.term.write(msg.data);
     if (msg.type === 'session') sess.sshSessionId = msg.id;
+    if (msg.type === 'status') setSessionStatus(sess, msg.status, msg.message);
     if (msg.type === 'exit') onSessionDisconnect(sess, `exited ${msg.exitCode}`);
   });
   socket.addEventListener('close', () => {
     sess.ws = null;
     sess.connected = false;
+    setSessionStatus(sess, 'detached');
     renderTabs();
     if (sess === activeSession) updateHud();
     scheduleReconnect(sess);
@@ -277,10 +304,12 @@ function reconnectSession(sess) {
   socket.addEventListener('error', () => {
     sess.ws = null;
     sess.connected = false;
+    setSessionStatus(sess, 'reconnecting');
     renderTabs();
     if (sess === activeSession) updateHud();
   });
   sess.connected = true;
+  setSessionStatus(sess, 'reconnecting');
   renderTabs();
   updateHud();
 }
@@ -354,7 +383,29 @@ function updateHud() {
 
   hudHost.textContent = sess.label;
   statusDot.classList.toggle('off', !sess.connected);
+  hudState.textContent = statusLabel(sess.status);
+  hudState.dataset.status = sess.status;
   if (filesBtn) filesBtn.hidden = !(sess.connected && sess.sshSessionId);
+}
+
+function setSessionStatus(sess, status, message = '') {
+  sess.status = status;
+  renderTabs();
+  if (sess === activeSession) updateHud();
+  if (status === 'restored') toast(message || '已恢复上次会话', 'ok');
+  if (status === 'attached_tmux') toast(message || 'Attached to tmux', 'ok');
+}
+
+function statusLabel(status) {
+  return ({
+    connected: 'Connected',
+    attaching_tmux: 'Attaching tmux',
+    attached_tmux: 'Attached to tmux',
+    detached: 'Detached',
+    reconnecting: 'Reconnecting',
+    restored: 'Restored',
+    disconnected: 'Disconnected'
+  })[status] || 'Connected';
 }
 
 /* ─── [data-send] buttons ────────────────────────────────────────────────── */
@@ -371,22 +422,39 @@ mbarPasteBtn?.addEventListener('click', pasteToActiveSession);
 
 async function pasteToActiveSession() {
   const text = await navigator.clipboard.readText().catch(() => '');
-  if (text) activeSession?.send({ type: 'input', data: text });
-  activeSession?.term.focus();
+  if (!text) return;
+  cmdInput.value = `${cmdInput.value}${text}`;
+  cmdInput.focus();
 }
 
 copyModeBtn?.addEventListener('click', openCopyMode);
 closeCopyLayerBtn?.addEventListener('click', closeCopyMode);
+document.querySelectorAll('[data-copy-scope]').forEach((button) => {
+  button.addEventListener('click', () => renderCopyText(button.dataset.copyScope));
+});
 
-function openCopyMode() {
+function openCopyMode(scope = 'screen') {
+  if (!activeSession) return;
+  renderCopyText(scope);
+  copyLayer.removeAttribute('hidden');
+}
+
+function renderCopyText(scope = 'screen') {
   if (!activeSession) return;
   const buffer = activeSession.term.buffer.active;
   const lines = [];
-  for (let index = 0; index < buffer.length; index += 1) {
+  const start = scope === 'screen'
+    ? Math.max(0, buffer.baseY)
+    : scope === 'tail'
+      ? Math.max(0, buffer.length - 80)
+      : 0;
+  const end = scope === 'screen'
+    ? Math.min(buffer.length, buffer.baseY + activeSession.term.rows)
+    : buffer.length;
+  for (let index = start; index < end; index += 1) {
     lines.push(buffer.getLine(index)?.translateToString(true) || '');
   }
   copyText.textContent = lines.join('\n').replace(/\n+$/g, '');
-  copyLayer.removeAttribute('hidden');
 }
 
 function closeCopyMode() {
@@ -400,13 +468,138 @@ cmdForm.addEventListener('submit', e => {
   const val = cmdInput.value;
   if (!val) return;
   activeSession?.send({ type: 'input', data: val + '\r' });
+  if (activeSession) {
+    activeSession.commandHistory = [val, ...activeSession.commandHistory.filter((item) => item !== val)].slice(0, 50);
+    activeSession.historyIndex = -1;
+  }
   cmdInput.value = '';
   activeSession?.term.focus();
+});
+
+cmdInput.addEventListener('keydown', (event) => {
+  if (!activeSession) return;
+  if (event.key === 'ArrowUp') {
+    event.preventDefault();
+    activeSession.historyIndex = Math.min(activeSession.commandHistory.length - 1, activeSession.historyIndex + 1);
+    cmdInput.value = activeSession.commandHistory[activeSession.historyIndex] || cmdInput.value;
+  }
+  if (event.key === 'ArrowDown') {
+    event.preventDefault();
+    activeSession.historyIndex = Math.max(-1, activeSession.historyIndex - 1);
+    cmdInput.value = activeSession.historyIndex >= 0 ? activeSession.commandHistory[activeSession.historyIndex] : '';
+  }
+});
+
+document.querySelectorAll('[data-draft]').forEach((button) => {
+  button.addEventListener('click', () => {
+    cmdInput.value = button.dataset.draft || '';
+    cmdInput.focus();
+  });
+});
+
+searchBtn?.addEventListener('click', () => {
+  if (!activeSession) return;
+  const term = prompt('Search terminal');
+  if (term) activeSession.searchAddon.findNext(term);
+});
+
+debugBtn?.addEventListener('click', openDebugSheet);
+closeDebugSheetBtn?.addEventListener('click', closeDebugSheet);
+document.querySelectorAll('[data-debug-tab]').forEach((button) => {
+  button.addEventListener('click', () => {
+    debugTab = button.dataset.debugTab;
+    document.querySelectorAll('[data-debug-tab]').forEach((tab) => tab.classList.toggle('active', tab === button));
+    loadDebugData();
+  });
 });
 
 /* ─── Resize ─────────────────────────────────────────────────────────────── */
 window.addEventListener('resize', () => requestAnimationFrame(() => activeSession?.fit()));
 window.visualViewport?.addEventListener('resize', () => requestAnimationFrame(() => activeSession?.fit()));
+
+async function openDebugSheet() {
+  backdrop.classList.add('open');
+  debugSheet.removeAttribute('hidden');
+  requestAnimationFrame(() => debugSheet.classList.add('open'));
+  await loadDebugData();
+}
+
+function closeDebugSheet() {
+  debugSheet.classList.remove('open');
+  setTimeout(() => {
+    debugSheet.setAttribute('hidden', '');
+    if (connectModal.hasAttribute('hidden') && settingsSheet.hasAttribute('hidden')) backdrop.classList.remove('open');
+  }, 220);
+}
+
+async function loadDebugData() {
+  if (!debugList) return;
+  debugList.textContent = 'Loading...';
+  try {
+    const endpoint = debugTab === 'devices' ? '/api/devices' : '/api/logs?limit=100';
+    const res = await fetch(endpoint, withDeviceIdentity());
+    const body = await res.json();
+    if (!res.ok) throw new Error(body.error || 'Debug unavailable');
+    debugList.innerHTML = '';
+    if (debugTab === 'devices') renderDevices(body.devices || []);
+    else renderLogs(body.logs || []);
+  } catch (err) {
+    debugList.textContent = err.message;
+  }
+}
+
+function renderLogs(logs) {
+  if (!logs.length) {
+    debugList.textContent = 'No logs';
+    return;
+  }
+  for (const log of logs) {
+    const row = document.createElement('div');
+    row.className = `debug-row debug-row--${log.status}`;
+    const time = new Date(log.createdAt).toLocaleString();
+    row.innerHTML = `
+      <div class="debug-row-main">${escapeHtml(log.event)} · ${escapeHtml(log.status)}</div>
+      <div class="debug-row-sub">${escapeHtml(time)} · ${escapeHtml([log.username, log.host].filter(Boolean).join('@'))}</div>
+      <div class="debug-row-msg">${escapeHtml(log.message || '')}</div>
+    `;
+    debugList.append(row);
+  }
+}
+
+function renderDevices(devices) {
+  if (!devices.length) {
+    debugList.textContent = 'No devices';
+    return;
+  }
+  for (const device of devices) {
+    const row = document.createElement('div');
+    row.className = `debug-row${device.current ? ' debug-row--current' : ''}`;
+    const seen = device.lastSeenAt ? new Date(device.lastSeenAt).toLocaleString() : '';
+    const unlink = device.current ? '' : `<button type="button" class="mini-btn" data-unlink-device="${escapeAttr(device.id)}">Unlink</button>`;
+    row.innerHTML = `
+      <div class="debug-row-main">${device.current ? 'Current device' : 'Linked device'} · ${escapeHtml(device.idHash)}</div>
+      <div class="debug-row-sub">Last seen ${escapeHtml(seen)}</div>
+      <div class="debug-row-msg">${escapeHtml(device.userAgent || '')}</div>
+      ${unlink}
+    `;
+    debugList.append(row);
+  }
+}
+
+debugList?.addEventListener('click', async (event) => {
+  const button = event.target.closest('[data-unlink-device]');
+  if (!button) return;
+  if (!confirm('Unlink this device?')) return;
+  try {
+    const res = await fetch(`/api/devices/${encodeURIComponent(button.dataset.unlinkDevice)}`, withDeviceIdentity({ method: 'DELETE' }));
+    const body = await res.json();
+    if (!res.ok) throw new Error(body.error || 'Unlink failed');
+    await loadDebugData();
+    toast('Device unlinked', 'ok');
+  } catch (err) {
+    toast(err.message, 'err');
+  }
+});
 
 /* ─── Add key sheet ──────────────────────────────────────────────────────── */
 addKeyBtn.addEventListener('click', openKeySheet);
@@ -415,9 +608,14 @@ settingsBtn?.addEventListener('click', openSettingsSheet);
 modalSettingsBtn?.addEventListener('click', openSettingsSheet);
 closeSettingsSheetBtn?.addEventListener('click', closeSettingsSheetFn);
 backdrop?.addEventListener('click', () => {
+  if (!debugSheet?.hasAttribute('hidden')) {
+    closeDebugSheet();
+    return;
+  }
   if (!settingsSheet?.hasAttribute('hidden')) closeSettingsSheetFn();
 });
 window.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape' && !debugSheet?.hasAttribute('hidden')) closeDebugSheet();
   if (event.key === 'Escape' && !settingsSheet?.hasAttribute('hidden')) closeSettingsSheetFn();
 });
 addHabitBtn?.addEventListener('click', () => {
