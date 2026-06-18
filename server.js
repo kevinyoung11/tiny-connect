@@ -494,7 +494,7 @@ if (!process.env.VERCEL) {
 async function startServer() {
   if (supabaseConfigured) {
     await Promise.all([keyStore.init(), profileStore.init(), userStore.init()]);
-    console.log('[supabase] connected and tables ready');
+    console.log('[supabase] configured; stores initialized');
   } else {
     console.warn('[supabase] not configured; /api and SSH WebSocket connections will return configuration errors');
   }

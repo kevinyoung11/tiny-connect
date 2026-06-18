@@ -52,10 +52,18 @@ export function resolveScopedKeyPath(localDir, userId, keyId) {
 /* ── Table init ─────────────────────────────────────────────────────────── */
 
 const _readyPools = new WeakSet();
+let _schemaWarningPrinted = false;
 async function ensureTables() {
   const pool = getPgPool();
   if (!pool) return;
-  await initializeSupabaseSchema(pool);
+  try {
+    await initializeSupabaseSchema(pool);
+  } catch (error) {
+    if (!_schemaWarningPrinted) {
+      console.warn(`[supabase-store] schema init skipped: ${error.message}`);
+      _schemaWarningPrinted = true;
+    }
+  }
 }
 
 export async function initializeSupabaseSchema(pool) {
