@@ -163,6 +163,7 @@ class Session {
     this.status = 'disconnected';
     this.reconnectTimer = null;
     this.heartbeatTimer = null;
+    this.touchScrollCleanup = null;
     this.manualClose = false;
     this.commandHistory = [];
     this.historyIndex = -1;
@@ -184,6 +185,7 @@ class Session {
       this.term.unicode.activeVersion = '11';
     } catch (_) {}
     this.term.open(this.el);
+    this.touchScrollCleanup = installTouchScrollBridge(this.el, this.term);
     this.term.onData(data => this.send({ type: 'input', data }));
   }
 
@@ -215,11 +217,69 @@ class Session {
     clearTimeout(this.reconnectTimer);
     stopHeartbeat(this);
     this.manualClose = true;
+    this.touchScrollCleanup?.();
     this.send({ type: 'close' });
     this.ws?.close();
     this.term.dispose();
     this.el.remove();
   }
+}
+
+function installTouchScrollBridge(pane, term) {
+  let startX = 0;
+  let lastY = 0;
+  let pendingPixels = 0;
+  let dragging = false;
+
+  const lineHeight = () => {
+    const screen = pane.querySelector('.xterm-screen');
+    const height = Number.parseFloat(getComputedStyle(screen || pane).lineHeight);
+    return Number.isFinite(height) && height > 0 ? height : (term.options.fontSize || 14) * (term.options.lineHeight || 1.3);
+  };
+
+  const onTouchStart = (event) => {
+    if (event.touches.length !== 1 || event.target.closest('button,input,textarea,select')) return;
+    const touch = event.touches[0];
+    startX = touch.clientX;
+    lastY = touch.clientY;
+    pendingPixels = 0;
+    dragging = true;
+  };
+
+  const onTouchMove = (event) => {
+    if (!dragging || event.touches.length !== 1) return;
+    const touch = event.touches[0];
+    const deltaY = lastY - touch.clientY;
+    const deltaX = Math.abs(touch.clientX - startX);
+    lastY = touch.clientY;
+
+    if (Math.abs(deltaY) < 1 || deltaX > Math.abs(deltaY) * 1.4) return;
+
+    pendingPixels += deltaY;
+    const lines = Math.trunc(pendingPixels / lineHeight());
+    if (lines === 0) return;
+
+    term.scrollLines(lines);
+    pendingPixels -= lines * lineHeight();
+    event.preventDefault();
+  };
+
+  const onTouchEnd = () => {
+    dragging = false;
+    pendingPixels = 0;
+  };
+
+  pane.addEventListener('touchstart', onTouchStart, { passive: true });
+  pane.addEventListener('touchmove', onTouchMove, { passive: false });
+  pane.addEventListener('touchend', onTouchEnd, { passive: true });
+  pane.addEventListener('touchcancel', onTouchEnd, { passive: true });
+
+  return () => {
+    pane.removeEventListener('touchstart', onTouchStart);
+    pane.removeEventListener('touchmove', onTouchMove);
+    pane.removeEventListener('touchend', onTouchEnd);
+    pane.removeEventListener('touchcancel', onTouchEnd);
+  };
 }
 
 /* ─── State ──────────────────────────────────────────────────────────────── */

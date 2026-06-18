@@ -58,6 +58,16 @@ test('mobile terminal viewport keeps native momentum scrolling enabled', () => {
   assert.match(js, /scrollback:\s*10000,/);
 });
 
+test('mobile terminal drag gestures scroll xterm directly', () => {
+  const js = readFileSync(resolve('public/client.js'), 'utf8');
+
+  assert.match(js, /this\.touchScrollCleanup\s*=\s*installTouchScrollBridge\(this\.el,\s*this\.term\);/);
+  assert.match(js, /function installTouchScrollBridge\(pane,\s*term\)/);
+  assert.match(js, /term\.scrollLines\(lines\);/);
+  assert.match(js, /event\.preventDefault\(\);/);
+  assert.match(js, /this\.touchScrollCleanup\?\.\(\);/);
+});
+
 test('renders saved hosts as menu items with inline delete buttons', () => {
   const menu = createMenu();
 
