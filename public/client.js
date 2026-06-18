@@ -436,6 +436,12 @@ closeKeySheet.addEventListener('click', closeKeySheet_fn);
 settingsBtn?.addEventListener('click', openSettingsSheet);
 modalSettingsBtn?.addEventListener('click', openSettingsSheet);
 closeSettingsSheetBtn?.addEventListener('click', closeSettingsSheetFn);
+backdrop?.addEventListener('click', () => {
+  if (!settingsSheet?.hasAttribute('hidden')) closeSettingsSheetFn();
+});
+window.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape' && !settingsSheet?.hasAttribute('hidden')) closeSettingsSheetFn();
+});
 addHabitBtn?.addEventListener('click', () => {
   appSettings.habits.push({
     id: `habit-${Date.now()}`,
@@ -901,12 +907,16 @@ function closeKeySheet_fn() {
 
 function openSettingsSheet() {
   renderSettingsForm();
+  backdrop.classList.add('open');
   settingsSheet.removeAttribute('hidden');
   requestAnimationFrame(() => settingsSheet.classList.add('open'));
 }
 function closeSettingsSheetFn() {
   settingsSheet.classList.remove('open');
-  setTimeout(() => settingsSheet.setAttribute('hidden', ''), 320);
+  setTimeout(() => {
+    settingsSheet.setAttribute('hidden', '');
+    if (connectModal.hasAttribute('hidden')) backdrop.classList.remove('open');
+  }, 320);
 }
 
 function showHud() {
