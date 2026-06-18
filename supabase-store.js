@@ -28,20 +28,29 @@ function sb() {
 let _pool = null;
 function getPgPool() {
   if (_pool) return _pool;
-  const cs = process.env.Direct_Link || process.env.DIRECT_URL || process.env.DATABASE_URL;
+  const cs = getDatabaseUrl();
   if (!cs) return null;
   _pool = new Pool({ connectionString: cs, ssl: { rejectUnauthorized: false }, max: 3 });
   _pool.on('error', (err) => console.error('[supabase-store] pg error:', err.message));
   return _pool;
 }
 
+export function getDatabaseUrl() {
+  return process.env.Direct_Link || process.env.DIRECT_URL || process.env.DATABASE_URL || '';
+}
+
 /* ── Table init ─────────────────────────────────────────────────────────── */
 
-let _tablesReady = false;
+const _readyPools = new WeakSet();
 async function ensureTables() {
-  if (_tablesReady) return;
   const pool = getPgPool();
-  if (!pool) { _tablesReady = true; return; }
+  if (!pool) return;
+  await initializeSupabaseSchema(pool);
+}
+
+export async function initializeSupabaseSchema(pool) {
+  if (!pool) return;
+  if (_readyPools.has(pool)) return;
 
   await pool.query(`
     CREATE TABLE IF NOT EXISTS app_users (
@@ -95,8 +104,29 @@ async function ensureTables() {
   await pool.query('CREATE UNIQUE INDEX IF NOT EXISTS user_devices_fp_idx ON user_devices(device_fingerprint)');
   await pool.query('CREATE INDEX IF NOT EXISTS ssh_keys_user_idx ON ssh_keys(user_id, created_at ASC)');
   await pool.query('CREATE INDEX IF NOT EXISTS conn_profiles_user_idx ON connection_profiles(user_id, created_at ASC)');
+  await enablePermissiveRls(pool, [
+    'app_users',
+    'user_devices',
+    'tiny_connect_user_settings',
+    'ssh_keys',
+    'connection_profiles'
+  ]);
 
-  _tablesReady = true;
+  _readyPools.add(pool);
+}
+
+async function enablePermissiveRls(pool, tables) {
+  for (const table of tables) {
+    await pool.query(`ALTER TABLE ${table} ENABLE ROW LEVEL SECURITY`);
+    await pool.query(`DROP POLICY IF EXISTS "${table}_client_select" ON ${table}`);
+    await pool.query(`DROP POLICY IF EXISTS "${table}_client_insert" ON ${table}`);
+    await pool.query(`DROP POLICY IF EXISTS "${table}_client_update" ON ${table}`);
+    await pool.query(`DROP POLICY IF EXISTS "${table}_client_delete" ON ${table}`);
+    await pool.query(`CREATE POLICY "${table}_client_select" ON ${table} FOR SELECT TO anon, authenticated USING (true)`);
+    await pool.query(`CREATE POLICY "${table}_client_insert" ON ${table} FOR INSERT TO anon, authenticated WITH CHECK (true)`);
+    await pool.query(`CREATE POLICY "${table}_client_update" ON ${table} FOR UPDATE TO anon, authenticated USING (true) WITH CHECK (true)`);
+    await pool.query(`CREATE POLICY "${table}_client_delete" ON ${table} FOR DELETE TO anon, authenticated USING (true)`);
+  }
 }
 
 /* ── Helpers ────────────────────────────────────────────────────────────── */
