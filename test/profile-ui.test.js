@@ -50,6 +50,14 @@ test('terminal shell exposes recovery status, debug, snippets, and copy scopes',
   assert.ok(html.includes('data-copy-scope="tail"'));
 });
 
+test('mobile terminal viewport keeps native momentum scrolling enabled', () => {
+  const css = readFileSync(resolve('public/styles.css'), 'utf8');
+  const js = readFileSync(resolve('public/client.js'), 'utf8');
+
+  assert.match(css, /\.terminal-pane \.xterm-viewport[^{]*\{[^}]*overflow-y:\s*auto !important;[^}]*-webkit-overflow-scrolling:\s*touch;[^}]*touch-action:\s*pan-y;/s);
+  assert.match(js, /scrollback:\s*10000,/);
+});
+
 test('renders saved hosts as menu items with inline delete buttons', () => {
   const menu = createMenu();
 

@@ -883,7 +883,13 @@ label {
 
 /* Make xterm fill */
 .terminal-pane .xterm          { height: 100%; }
-.terminal-pane .xterm-viewport { border-radius: 0 !important; }
+.terminal-pane .xterm-viewport {
+  border-radius: 0 !important;
+  overflow-y: auto !important;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
+  overscroll-behavior: contain;
+}
 
 /* ─── Mobile bar ─────────────────────────────────────────────────────────── */
 .mbar {

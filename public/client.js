@@ -67,7 +67,7 @@ const TERM_THEMES = {
 const TERM_OPTS = {
   cursorBlink: true,
   convertEol: true,
-  scrollback: 5000,
+  scrollback: 10000,
   fontFamily: '"SF Mono","Fira Code",ui-monospace,Menlo,"Noto Sans Mono CJK SC",monospace',
   fontSize: 14,
   lineHeight: 1.3,
