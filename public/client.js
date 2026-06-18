@@ -455,10 +455,7 @@ settingsForm?.addEventListener('submit', async e => {
     closeSettingsSheetFn();
     toast('Settings saved', 'ok');
   } catch (err) {
-    applySettings(next);
-    renderSettingsForm();
-    closeSettingsSheetFn();
-    toast('Settings saved locally', 'ok');
+    toast(err.message, 'err');
   }
 });
 
@@ -745,9 +742,9 @@ async function loadSettings() {
     const res = await fetch('/api/settings', withDeviceIdentity());
     const body = await res.json();
     if (res.ok) applySettings(body.settings || {});
-    else applySettings(readLocalSettings());
-  } catch (_) {
-    applySettings(readLocalSettings());
+    else throw new Error(body.error || 'Settings unavailable');
+  } catch (err) {
+    toast(err.message, 'err');
   }
   renderSettingsForm();
 }
@@ -760,7 +757,6 @@ function applySettings(settings) {
     autoReconnect: settings.autoReconnect !== false
   };
   TERM_OPTS.fontSize = appSettings.fontSize;
-  localStorage.setItem('tinyconnect.settings', JSON.stringify(appSettings));
   if (fontPreview) fontPreview.style.fontSize = `${appSettings.fontSize}px`;
   for (const sess of sessions) {
     sess.term.options.fontSize = appSettings.fontSize;
@@ -775,14 +771,6 @@ function renderSettingsForm() {
   keepaliveInput.value = String(appSettings.keepaliveIntervalSeconds);
   disconnectTimeoutInput.value = appSettings.disconnectTimeout;
   autoReconnectInput.checked = appSettings.autoReconnect;
-}
-
-function readLocalSettings() {
-  try {
-    return JSON.parse(localStorage.getItem('tinyconnect.settings') || '{}');
-  } catch (_) {
-    return {};
-  }
 }
 
 keyIdInput?.addEventListener('change', () => {
