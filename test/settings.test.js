@@ -1,6 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { defaultSettings, getDefaultStartupHabit, normalizeSettings } from '../settings.js';
+import {
+  buildTmuxStartupCommand,
+  defaultSettings,
+  getDefaultStartupHabit,
+  normalizeSettings
+} from '../settings.js';
 
 test('normalizes missing settings to product defaults', () => {
   assert.deepEqual(normalizeSettings({}), defaultSettings);
@@ -43,4 +48,17 @@ test('normalizes startup habits and selects the enabled habit with highest prior
     { id: 'b', name: 'Later', command: 'echo later', priority: 20, enabled: true }
   ]);
   assert.equal(getDefaultStartupHabit(settings).command, 'cd ~/code && codex');
+});
+
+test('builds tmux startup command that only runs habit for a new session', () => {
+  const command = buildTmuxStartupCommand({
+    habits: [
+      { id: 'codex', name: 'Codex', command: 'cd ~/code && codex', priority: 1, enabled: true }
+    ]
+  });
+
+  assert.equal(
+    command,
+    "tmux has-session -t 'tc' 2>/dev/null || tmux new-session -d -s 'tc' 'cd ~/code && codex'; tmux attach-session -t 'tc'"
+  );
 });

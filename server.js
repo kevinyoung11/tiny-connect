@@ -17,7 +17,7 @@ import {
   getSupabaseConfigStatus,
   isSupabaseConfigured
 } from './supabase-store.js';
-import { disconnectTimeoutToMs, getDefaultStartupHabit, normalizeSettings } from './settings.js';
+import { buildTmuxStartupCommand, disconnectTimeoutToMs, getDefaultStartupHabit, normalizeSettings } from './settings.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const port = Number(process.env.PORT || 8787);
@@ -424,8 +424,7 @@ function createSshTransport(ws, config) {
       if (config.tmux) {
         setTimeout(() => {
           if (!stream) return;
-          stream.write('tmux new-session -A -s tc\r');
-          writeStartupHabit(stream, config.settings, 700);
+          stream.write(`${buildTmuxStartupCommand(config.settings)}\r`);
         }, 400);
       } else if (startupCommand) {
         stream.write(`${startupCommand}\r`);

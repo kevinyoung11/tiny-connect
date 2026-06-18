@@ -32,6 +32,16 @@ export function getDefaultStartupHabit(settings = {}) {
   return normalized.habits.find((habit) => habit.enabled) || null;
 }
 
+export function buildTmuxStartupCommand(settings = {}, sessionName = 'tc') {
+  const safeSessionName = shellQuote(sessionName);
+  const habit = getDefaultStartupHabit(settings);
+  const createCommand = habit
+    ? `tmux new-session -d -s ${safeSessionName} ${shellQuote(habit.command)}`
+    : `tmux new-session -d -s ${safeSessionName}`;
+
+  return `tmux has-session -t ${safeSessionName} 2>/dev/null || ${createCommand}; tmux attach-session -t ${safeSessionName}`;
+}
+
 export function disconnectTimeoutToMs(value) {
   const normalized = normalizeSettings({ disconnectTimeout: value }).disconnectTimeout;
   if (normalized === 'never') return null;
@@ -59,4 +69,8 @@ function normalizeHabits(value) {
     }))
     .filter((habit) => habit.id && habit.name && habit.command)
     .sort((a, b) => a.priority - b.priority || a.name.localeCompare(b.name));
+}
+
+function shellQuote(value) {
+  return `'${String(value).replace(/'/g, `'\\''`)}'`;
 }
