@@ -172,6 +172,17 @@ codex ready</pre>
           </div>
           <div class="habit-list" id="habitList"></div>
         </div>
+        <div class="field">
+          <div class="settings-row-head">
+            <label>Device pairing</label>
+            <button type="button" class="mini-btn" id="createPairingCodeBtn">Generate code</button>
+          </div>
+          <div class="pairing-code" id="pairingCodeBox" hidden></div>
+          <div class="pairing-row">
+            <input id="pairingCodeInput" type="text" inputmode="numeric" placeholder="Enter 6-digit code" maxlength="6" />
+            <button type="button" class="mini-btn" id="linkDeviceBtn">Link</button>
+          </div>
+        </div>
         <button type="submit" class="btn-connect">Save Settings</button>
       </form>
     </div>

@@ -97,6 +97,15 @@ export async function initializeSupabaseSchema(pool) {
     )
   `);
   await pool.query(`
+    CREATE TABLE IF NOT EXISTS device_pairing_codes (
+      code       TEXT PRIMARY KEY,
+      user_id    TEXT NOT NULL REFERENCES app_users(id) ON DELETE CASCADE,
+      expires_at TIMESTAMPTZ NOT NULL,
+      used_at    TIMESTAMPTZ,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    )
+  `);
+  await pool.query(`
     CREATE TABLE IF NOT EXISTS ssh_keys (
       id          TEXT PRIMARY KEY,
       user_id     TEXT NOT NULL REFERENCES app_users(id) ON DELETE CASCADE,
@@ -121,12 +130,14 @@ export async function initializeSupabaseSchema(pool) {
   `);
   await pool.query('CREATE UNIQUE INDEX IF NOT EXISTS user_devices_fp_idx ON user_devices(device_fingerprint)');
   await pool.query('CREATE INDEX IF NOT EXISTS ssh_keys_user_idx ON ssh_keys(user_id, created_at ASC)');
+  await pool.query('CREATE INDEX IF NOT EXISTS device_pairing_codes_user_idx ON device_pairing_codes(user_id, created_at DESC)');
   await pool.query('CREATE UNIQUE INDEX IF NOT EXISTS conn_profiles_user_name_uidx ON connection_profiles(user_id, name)');
   await pool.query('CREATE INDEX IF NOT EXISTS conn_profiles_user_idx ON connection_profiles(user_id, created_at ASC)');
   await enablePermissiveRls(pool, [
     'app_users',
     'user_devices',
     'tiny_connect_user_settings',
+    'device_pairing_codes',
     'ssh_keys',
     'connection_profiles'
   ]);
@@ -251,8 +262,59 @@ export function createSupabaseUserStore() {
         'upsert user_settings'
       );
       return this.getUserSettings({ userId });
+    },
+
+    async createPairingCode({ userId }) {
+      requireUserId({ userId });
+      const code = randomDigits(6);
+      const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
+      await sbCheck(
+        await sb().from('device_pairing_codes').insert({
+          code,
+          user_id: userId,
+          expires_at: expiresAt
+        }),
+        'insert device_pairing_codes'
+      );
+      return { code, expiresAt };
+    },
+
+    async linkDeviceWithPairingCode({ deviceFingerprint, userAgent, code }) {
+      const cleanCode = String(code || '').replace(/\D/g, '');
+      if (cleanCode.length !== 6) throw new Error('Pairing code must be 6 digits');
+      const fp = sanitizeFingerprint(deviceFingerprint);
+      const result = await sb().from('device_pairing_codes')
+        .select('code, user_id, expires_at, used_at')
+        .eq('code', cleanCode)
+        .maybeSingle();
+      if (result.error) throw new Error(result.error.message);
+      if (!result.data || result.data.used_at) throw new Error('Pairing code not found');
+      if (new Date(result.data.expires_at).getTime() < Date.now()) throw new Error('Pairing code expired');
+
+      await sbCheck(
+        await sb().from('user_devices').upsert({
+          id: `device_${randomUUID()}`,
+          user_id: result.data.user_id,
+          device_fingerprint: fp,
+          user_agent: userAgent || null,
+          last_seen_at: new Date().toISOString()
+        }, { onConflict: 'device_fingerprint' }),
+        'upsert paired user_devices'
+      );
+      await sb().from('device_pairing_codes')
+        .update({ used_at: new Date().toISOString() })
+        .eq('code', cleanCode);
+      return { id: result.data.user_id, authUserId: null, displayName: 'Anonymous device' };
     }
   };
+}
+
+function randomDigits(length) {
+  let value = '';
+  while (value.length < length) {
+    value += String(randomBytes(1)[0] % 10);
+  }
+  return value;
 }
 
 /* ── Key store ──────────────────────────────────────────────────────────── */

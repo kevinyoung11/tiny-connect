@@ -151,6 +151,29 @@ app.post('/api/settings', async (req, res) => {
   }
 });
 
+app.post('/api/devices/pairing-code', async (req, res) => {
+  try {
+    const scope = await getRequestScope(req);
+    const pairing = await userStore.createPairingCode(scope);
+    res.status(201).json({ pairing });
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+app.post('/api/devices/link', async (req, res) => {
+  try {
+    const user = await userStore.linkDeviceWithPairingCode({
+      deviceFingerprint: req.get('x-device-fingerprint'),
+      userAgent: req.get('user-agent') || '',
+      code: req.body?.code
+    });
+    res.json({ user: { idHash: createHash('sha256').update(user.id).digest('hex').slice(0, 12) } });
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
 async function getRequestScope(req) {
   const deviceFingerprint = req.get('x-device-fingerprint');
   const user = await userStore.ensureUserForDevice({

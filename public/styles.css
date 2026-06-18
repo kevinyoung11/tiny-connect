@@ -442,6 +442,20 @@ label {
   height: 36px;
   font-size: 13px;
 }
+.pairing-code {
+  padding: 12px;
+  border: 1px solid rgba(0,212,170,.35);
+  border-radius: var(--r);
+  background: var(--accent-glow);
+  color: var(--accent);
+  font: 18px/1 var(--mono);
+  letter-spacing: 1px;
+}
+.pairing-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+}
 
 /* ─── SFTP sheet ─────────────────────────────────────────────────────────── */
 .sheet--sftp { max-height: 82dvh; }

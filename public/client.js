@@ -92,6 +92,10 @@ const disconnectTimeoutInput = document.querySelector('#disconnectTimeoutInput')
 const autoReconnectInput = document.querySelector('#autoReconnectInput');
 const addHabitBtn       = document.querySelector('#addHabitBtn');
 const habitList         = document.querySelector('#habitList');
+const createPairingCodeBtn = document.querySelector('#createPairingCodeBtn');
+const pairingCodeBox    = document.querySelector('#pairingCodeBox');
+const pairingCodeInput  = document.querySelector('#pairingCodeInput');
+const linkDeviceBtn     = document.querySelector('#linkDeviceBtn');
 
 /* ─── Session class ──────────────────────────────────────────────────────── */
 class Session {
@@ -442,6 +446,8 @@ addHabitBtn?.addEventListener('click', () => {
   });
   renderSettingsForm();
 });
+createPairingCodeBtn?.addEventListener('click', createPairingCode);
+linkDeviceBtn?.addEventListener('click', linkDevice);
 fontSizeInput?.addEventListener('input', () => {
   fontSizeValue.textContent = fontSizeInput.value;
   applySettings({ ...appSettings, fontSize: Number(fontSizeInput.value) });
@@ -835,6 +841,37 @@ function escapeHtml(value) {
 
 function escapeAttr(value) {
   return escapeHtml(value).replace(/"/g, '&quot;');
+}
+
+async function createPairingCode() {
+  try {
+    const res = await fetch('/api/devices/pairing-code', withDeviceIdentity({ method: 'POST' }));
+    const body = await res.json();
+    if (!res.ok) throw new Error(body.error || 'Failed to create pairing code');
+    pairingCodeBox.hidden = false;
+    pairingCodeBox.textContent = `${body.pairing.code} · expires in 10 min`;
+  } catch (err) {
+    toast(err.message, 'err');
+  }
+}
+
+async function linkDevice() {
+  const code = pairingCodeInput.value.trim();
+  if (!code) return;
+  try {
+    const res = await fetch('/api/devices/link', withDeviceIdentity({
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code })
+    }));
+    const body = await res.json();
+    if (!res.ok) throw new Error(body.error || 'Failed to link device');
+    pairingCodeInput.value = '';
+    toast('Device linked', 'ok');
+    await Promise.all([loadSettings(), loadKeys(), loadProfiles()]);
+  } catch (err) {
+    toast(err.message, 'err');
+  }
 }
 
 keyIdInput?.addEventListener('change', () => {

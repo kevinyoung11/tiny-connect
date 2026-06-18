@@ -46,6 +46,7 @@ test('initializes Supabase tables, indexes, and permissive RLS policies', async 
 
   assert.match(pool.sql(), /CREATE TABLE IF NOT EXISTS app_users/);
   assert.match(pool.sql(), /CREATE TABLE IF NOT EXISTS tiny_connect_user_settings/);
+  assert.match(pool.sql(), /CREATE TABLE IF NOT EXISTS device_pairing_codes/);
   assert.match(pool.sql(), /CREATE UNIQUE INDEX IF NOT EXISTS user_devices_fp_idx/);
   assert.match(pool.sql(), /CREATE UNIQUE INDEX IF NOT EXISTS conn_profiles_user_name_uidx/);
   assert.match(pool.sql(), /ALTER TABLE app_users ENABLE ROW LEVEL SECURITY/);
@@ -53,6 +54,7 @@ test('initializes Supabase tables, indexes, and permissive RLS policies', async 
   assert.match(pool.sql(), /CREATE POLICY "ssh_keys_client_insert" ON ssh_keys FOR INSERT TO anon, authenticated WITH CHECK \(true\)/);
   assert.match(pool.sql(), /CREATE POLICY "connection_profiles_client_update" ON connection_profiles FOR UPDATE TO anon, authenticated USING \(true\) WITH CHECK \(true\)/);
   assert.match(pool.sql(), /CREATE POLICY "tiny_connect_user_settings_client_delete" ON tiny_connect_user_settings FOR DELETE TO anon, authenticated USING \(true\)/);
+  assert.match(pool.sql(), /CREATE POLICY "device_pairing_codes_client_insert" ON device_pairing_codes FOR INSERT TO anon, authenticated WITH CHECK \(true\)/);
 });
 
 test('resolves local key cache paths under the owning user id', () => {
