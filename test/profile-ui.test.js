@@ -2,17 +2,20 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { applyProfileToConnectionForm, renderProfileOptions } from '../public/profile-ui.js';
+import { applyProfileToConnectionForm, renderProfileMenu } from '../public/profile-ui.js';
 
 test('connection modal puts saved host picker inside the host row', () => {
   const html = readFileSync(resolve('public/index.html'), 'utf8');
 
   assert.ok(html.indexOf('class="host-combo"') >= 0);
   assert.ok(html.indexOf('id="host"') >= 0);
-  assert.ok(html.indexOf('id="profileSelect"') >= 0);
+  assert.ok(html.indexOf('id="profileToggle"') >= 0);
+  assert.ok(html.indexOf('id="profileMenu"') >= 0);
   assert.ok(html.indexOf('id="profileSavePanel"') >= 0);
-  assert.ok(html.indexOf('id="profileSelect"') > html.indexOf('id="host"'));
-  assert.ok(html.indexOf('id="profileSelect"') < html.indexOf('id="port"'));
+  assert.ok(!html.includes('id="profileSelect"'));
+  assert.ok(!html.includes('id="deleteProfileBtn"'));
+  assert.ok(html.indexOf('id="profileToggle"') > html.indexOf('id="host"'));
+  assert.ok(html.indexOf('id="profileMenu"') < html.indexOf('id="port"'));
 });
 
 test('connection modal removes the separate Saved tab', () => {
@@ -21,21 +24,21 @@ test('connection modal removes the separate Saved tab', () => {
   assert.ok(!html.includes('data-mode="saved"'));
   assert.ok(!html.includes('data-mode="local"'));
   assert.ok(!html.includes('id="saveProfileBtn"'));
-  assert.ok(html.indexOf('id="deleteProfileBtn"') > html.indexOf('id="profileSelect"'));
+  assert.ok(!html.includes('id="deleteProfileBtn"'));
 });
 
-test('renders saved hosts with a placeholder and host context', () => {
-  const select = createSelect();
+test('renders saved hosts as menu items with inline delete buttons', () => {
+  const menu = createMenu();
 
-  renderProfileOptions(select, [
+  renderProfileMenu(menu, [
     { id: 'profile_1', name: 'Prod', host: 'prod.example.com', username: 'deploy' }
   ]);
 
-  assert.equal(select.children.length, 2);
-  assert.equal(select.children[0].value, '');
-  assert.equal(select.children[0].textContent, 'Saved');
-  assert.equal(select.children[1].value, 'profile_1');
-  assert.equal(select.children[1].textContent, 'Prod · deploy@prod.example.com');
+  assert.equal(menu.children.length, 1);
+  assert.equal(menu.children[0].dataset.profileId, 'profile_1');
+  assert.equal(menu.children[0].children[0].textContent, 'Prod');
+  assert.equal(menu.children[0].children[1].textContent, 'deploy@prod.example.com');
+  assert.equal(menu.children[0].children[2].dataset.deleteProfileId, 'profile_1');
 });
 
 test('applies a selected profile to the connection form', () => {
@@ -62,7 +65,7 @@ test('applies a selected profile to the connection form', () => {
   assert.equal(fields.useTmuxInput.checked, true);
 });
 
-function createSelect() {
+function createMenu() {
   return {
     innerHTML: '',
     children: [],

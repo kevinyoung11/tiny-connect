@@ -1,7 +1,7 @@
 import { Terminal } from 'https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0/+esm';
 import { FitAddon } from 'https://cdn.jsdelivr.net/npm/@xterm/addon-fit@0.10.0/+esm';
 import { getDeviceFingerprint, withDeviceIdentity } from './identity.js';
-import { applyProfileToConnectionForm, renderProfileOptions } from './profile-ui.js';
+import { applyProfileToConnectionForm, renderProfileMenu } from './profile-ui.js';
 
 /* ─── Terminal theme ─────────────────────────────────────────────────────── */
 const TERM_OPTS = {
@@ -46,8 +46,8 @@ const closeKeySheet     = document.querySelector('#closeKeySheet');
 const keyForm           = document.querySelector('#keyForm');
 const keyNameInput      = document.querySelector('#keyName');
 const privateKeyInput   = document.querySelector('#privateKey');
-const profileSelect     = document.querySelector('#profileSelect');
-const deleteProfileBtn  = document.querySelector('#deleteProfileBtn');
+const profileToggle     = document.querySelector('#profileToggle');
+const profileMenu       = document.querySelector('#profileMenu');
 const profileSavePanel  = document.querySelector('#profileSavePanel');
 const profileNameInput  = document.querySelector('#profileNameInput');
 const profileSaveConfirm = document.querySelector('#profileSaveConfirm');
@@ -513,20 +513,44 @@ async function loadProfiles() {
     const res = await fetch('/api/profiles', withDeviceIdentity());
     const body = await res.json();
     profilesCache = body.profiles || [];
-    renderProfileSelect();
+    renderProfilePicker();
   } catch (_) {}
 }
 
-function renderProfileSelect() {
-  if (!profileSelect) return;
-  renderProfileOptions(profileSelect, profilesCache);
-  if (deleteProfileBtn) deleteProfileBtn.hidden = true;
+function renderProfilePicker() {
+  if (!profileMenu) return;
+  renderProfileMenu(profileMenu, profilesCache);
+  if (profileToggle) profileToggle.disabled = profilesCache.length === 0;
 }
 
-profileSelect?.addEventListener('change', () => {
-  const profile = profilesCache.find(p => p.id === profileSelect.value);
-  if (deleteProfileBtn) deleteProfileBtn.hidden = !profile;
+profileToggle?.addEventListener('click', () => {
+  if (!profilesCache.length) return;
+  setProfileMenuOpen(profileMenu.hasAttribute('hidden'));
+});
+
+profileMenu?.addEventListener('click', async (event) => {
+  const deleteButton = event.target.closest('[data-delete-profile-id]');
+  if (deleteButton) {
+    event.stopPropagation();
+    await deleteProfileById(deleteButton.dataset.deleteProfileId);
+    return;
+  }
+
+  const item = event.target.closest('[data-profile-id]');
+  if (!item) return;
+  const profile = profilesCache.find(p => p.id === item.dataset.profileId);
   if (!profile) return;
+  setProfileMenuOpen(false);
+  applyProfile(profile);
+});
+
+document.addEventListener('click', (event) => {
+  if (profileMenu?.hasAttribute('hidden')) return;
+  if (event.target.closest('.host-combo')) return;
+  setProfileMenuOpen(false);
+});
+
+function applyProfile(profile) {
   applyProfileToConnectionForm(profile, {
     hostInput,
     portInput,
@@ -535,7 +559,13 @@ profileSelect?.addEventListener('change', () => {
     passphraseInput,
     useTmuxInput,
   });
-});
+}
+
+function setProfileMenuOpen(open) {
+  if (!profileMenu || !profileToggle) return;
+  profileMenu.toggleAttribute('hidden', !open);
+  profileToggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+}
 
 /* ─── Inline profile save panel ──────────────────────────────────────────── */
 profileNameInput?.addEventListener('focus', () => {
@@ -573,10 +603,7 @@ async function doSaveProfile() {
     const body = await res.json();
     if (!res.ok) throw new Error(body.error || 'Save failed');
     await loadProfiles();
-    if (body.profile?.id) {
-      profileSelect.value = body.profile.id;
-      if (deleteProfileBtn) deleteProfileBtn.hidden = false;
-    }
+    setProfileMenuOpen(false);
     profileNameInput.value = '';
     toast(`Saved host "${name}"`, 'ok');
   } catch (err) {
@@ -592,8 +619,7 @@ profileNameInput?.addEventListener('keydown', e => {
   if (e.key === 'Enter') { e.preventDefault(); doSaveProfile(); }
 });
 
-deleteProfileBtn?.addEventListener('click', async () => {
-  const id = profileSelect.value;
+async function deleteProfileById(id) {
   if (!id) return;
   const profile = profilesCache.find(p => p.id === id);
   if (!confirm(`Delete saved host "${profile?.name || id}"?`)) return;
@@ -602,11 +628,12 @@ deleteProfileBtn?.addEventListener('click', async () => {
     const body = await res.json();
     if (!res.ok) throw new Error(body.error || 'Delete failed');
     await loadProfiles();
+    setProfileMenuOpen(profilesCache.length > 0);
     toast('Saved host deleted', 'ok');
   } catch (err) {
     toast(err.message, 'err');
   }
-});
+}
 
 /* ─── SFTP ───────────────────────────────────────────────────────────────── */
 filesBtn?.addEventListener('click', openSftp);
