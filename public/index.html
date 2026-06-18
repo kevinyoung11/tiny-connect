@@ -39,31 +39,22 @@
       </div>
 
       <form id="connectForm" autocomplete="off" novalidate>
-        <div class="mode-tabs" role="tablist">
-          <button type="button" class="tab active" data-mode="ssh" role="tab" aria-selected="true">SSH</button>
-          <button type="button" class="tab" data-mode="saved" role="tab" aria-selected="false">Saved</button>
-        </div>
-
-        <div class="saved-panel" id="savedPanel" hidden>
-          <div class="field" style="flex:1">
-            <label for="profileSelect">Saved Hosts</label>
-            <select id="profileSelect"></select>
-          </div>
-          <button type="button" class="btn-icon btn-icon--danger" id="deleteProfileBtn" title="Delete saved host" hidden>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-              <polyline points="3 6 5 6 21 6"/>
-              <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
-              <path d="M10 11v6M14 11v6"/>
-              <path d="M9 6V4h6v2"/>
-            </svg>
-          </button>
-        </div>
-
         <div id="sshFields">
           <div class="field-row">
             <div class="field" style="flex:1">
               <label for="host">Host</label>
-              <input id="host" type="text" placeholder="192.168.1.1" autocapitalize="none" autocorrect="off" spellcheck="false" inputmode="url" />
+              <div class="host-combo">
+                <input id="host" type="text" placeholder="192.168.1.1" autocapitalize="none" autocorrect="off" spellcheck="false" inputmode="url" />
+                <select id="profileSelect" title="Saved hosts" aria-label="Saved hosts"></select>
+                <button type="button" class="btn-icon btn-icon--danger" id="deleteProfileBtn" title="Delete saved host" hidden>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="3 6 5 6 21 6"/>
+                    <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
+                    <path d="M10 11v6M14 11v6"/>
+                    <path d="M9 6V4h6v2"/>
+                  </svg>
+                </button>
+              </div>
             </div>
             <div class="field" style="flex:0 0 80px">
               <label for="port">Port</label>

@@ -209,38 +209,29 @@ label {
   animation: fieldFlash .6s ease forwards;
 }
 
-/* Saved panel */
-.saved-panel {
-  display: flex;
-  gap: 6px;
-  align-items: flex-end;
-  margin: -6px 0 18px;
-}
-.saved-panel[hidden] { display: none; }
-.saved-panel .field { flex: 1; }
-
-/* Mode tabs */
-.mode-tabs {
-  display: flex; gap: 3px;
-  background: rgba(255,255,255,.04);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 3px;
-  margin-bottom: 18px;
-}
-.tab {
-  flex: 1; height: 34px;
-  border: none; border-radius: 7px;
-  background: transparent;
-  color: var(--text-2);
-  font-size: 13.5px; font-weight: 500;
-  cursor: pointer;
-  transition: background .15s, color .15s;
-}
-.tab.active { background: rgba(255,255,255,.11); color: var(--text); font-weight: 600; }
-
 /* Fields spacing */
 #sshFields { display: flex; flex-direction: column; gap: 14px; }
+
+.host-combo {
+  display: flex;
+  min-width: 0;
+  gap: 6px;
+}
+.host-combo input {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.host-combo select {
+  flex: 0 0 94px;
+  min-width: 0;
+  padding-left: 10px;
+  padding-right: 26px;
+  color: var(--text-2);
+}
+.host-combo .btn-icon {
+  width: 42px;
+  height: 42px;
+}
 
 .key-row { display: flex; gap: 6px; }
 .key-row select { flex: 1; }
@@ -893,6 +884,10 @@ label {
     margin-right: -16px;
     padding-left: 16px;
     padding-right: 16px;
+  }
+  .host-combo select {
+    flex-basis: 82px;
+    font-size: 12px;
   }
   /* Keep mbar bottom safe area */
   .workspace.mbar-on {

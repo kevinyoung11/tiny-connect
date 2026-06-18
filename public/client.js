@@ -33,7 +33,6 @@ const connectForm       = document.querySelector('#connectForm');
 const connectBtn        = document.querySelector('#connectBtn');
 const btnLabel          = connectBtn.querySelector('.btn-label');
 const spinner           = document.querySelector('#spinner');
-const sshFields         = document.querySelector('#sshFields');
 const hostInput         = document.querySelector('#host');
 const portInput         = document.querySelector('#port');
 const usernameInput     = document.querySelector('#username');
@@ -47,7 +46,6 @@ const closeKeySheet     = document.querySelector('#closeKeySheet');
 const keyForm           = document.querySelector('#keyForm');
 const keyNameInput      = document.querySelector('#keyName');
 const privateKeyInput   = document.querySelector('#privateKey');
-const savedPanel        = document.querySelector('#savedPanel');
 const profileSelect     = document.querySelector('#profileSelect');
 const deleteProfileBtn  = document.querySelector('#deleteProfileBtn');
 const profileSavePanel  = document.querySelector('#profileSavePanel');
@@ -156,7 +154,6 @@ class Session {
 /* ─── State ──────────────────────────────────────────────────────────────── */
 let sessions      = [];
 let activeSession = null;
-let currentMode   = 'ssh';
 let profilesCache = [];
 let keysCache     = [];
 let appSettings   = {
@@ -174,25 +171,6 @@ openModal();
 loadSettings();
 loadKeys();
 loadProfiles();
-renderModeTabs();
-
-/* ─── Mode tabs ──────────────────────────────────────────────────────────── */
-document.querySelectorAll('.tab').forEach(tab => {
-  tab.addEventListener('click', () => {
-    currentMode = tab.dataset.mode;
-    renderModeTabs();
-  });
-});
-
-function renderModeTabs() {
-  document.querySelectorAll('.tab').forEach(t => {
-    const active = t.dataset.mode === currentMode;
-    t.classList.toggle('active', active);
-    t.setAttribute('aria-selected', active ? 'true' : 'false');
-  });
-  sshFields.hidden = currentMode === 'saved';
-  if (savedPanel) savedPanel.hidden = currentMode !== 'saved';
-}
 
 /* ─── Connect ────────────────────────────────────────────────────────────── */
 connectForm.addEventListener('submit', e => { e.preventDefault(); doConnect(); });
@@ -549,8 +527,6 @@ profileSelect?.addEventListener('change', () => {
   const profile = profilesCache.find(p => p.id === profileSelect.value);
   if (deleteProfileBtn) deleteProfileBtn.hidden = !profile;
   if (!profile) return;
-  currentMode = 'ssh';
-  renderModeTabs();
   applyProfileToConnectionForm(profile, {
     hostInput,
     portInput,

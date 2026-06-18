@@ -4,18 +4,21 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { applyProfileToConnectionForm, renderProfileOptions } from '../public/profile-ui.js';
 
-test('connection modal places profile selection above profile saving', () => {
+test('connection modal puts saved host picker inside the host row', () => {
   const html = readFileSync(resolve('public/index.html'), 'utf8');
 
+  assert.ok(html.indexOf('class="host-combo"') >= 0);
+  assert.ok(html.indexOf('id="host"') >= 0);
   assert.ok(html.indexOf('id="profileSelect"') >= 0);
   assert.ok(html.indexOf('id="profileSavePanel"') >= 0);
-  assert.ok(html.indexOf('id="profileSelect"') < html.indexOf('id="profileSavePanel"'));
+  assert.ok(html.indexOf('id="profileSelect"') > html.indexOf('id="host"'));
+  assert.ok(html.indexOf('id="profileSelect"') < html.indexOf('id="port"'));
 });
 
-test('connection modal uses Saved tab instead of top profile action buttons', () => {
+test('connection modal removes the separate Saved tab', () => {
   const html = readFileSync(resolve('public/index.html'), 'utf8');
 
-  assert.ok(html.includes('data-mode="saved"'));
+  assert.ok(!html.includes('data-mode="saved"'));
   assert.ok(!html.includes('data-mode="local"'));
   assert.ok(!html.includes('id="saveProfileBtn"'));
   assert.ok(html.indexOf('id="deleteProfileBtn"') > html.indexOf('id="profileSelect"'));
@@ -30,7 +33,7 @@ test('renders saved hosts with a placeholder and host context', () => {
 
   assert.equal(select.children.length, 2);
   assert.equal(select.children[0].value, '');
-  assert.equal(select.children[0].textContent, '— Saved hosts —');
+  assert.equal(select.children[0].textContent, 'Saved');
   assert.equal(select.children[1].value, 'profile_1');
   assert.equal(select.children[1].textContent, 'Prod · deploy@prod.example.com');
 });
