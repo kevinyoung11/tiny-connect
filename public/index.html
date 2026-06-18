@@ -136,21 +136,34 @@
         <div class="field">
           <label for="themeInput">Theme</label>
           <select id="themeInput">
-            <option value="tiny-dark">Tiny Dark</option>
-            <option value="tokyo-night">Tokyo Night</option>
-            <option value="dracula">Dracula</option>
-            <option value="nord">Nord</option>
-            <option value="catppuccin">Catppuccin</option>
-            <option value="solarized-dark">Solarized Dark</option>
-            <option value="gruvbox-dark">Gruvbox Dark</option>
+            <optgroup label="Dark">
+              <option value="tiny-dark">Tiny Dark</option>
+              <option value="tokyo-night">Tokyo Night</option>
+              <option value="dracula">Dracula</option>
+              <option value="nord">Nord</option>
+              <option value="catppuccin">Catppuccin Mocha</option>
+              <option value="solarized-dark">Solarized Dark</option>
+              <option value="gruvbox-dark">Gruvbox Dark</option>
+            </optgroup>
+            <optgroup label="Light">
+              <option value="github-light">GitHub Light</option>
+              <option value="solarized-light">Solarized Light</option>
+              <option value="catppuccin-latte">Catppuccin Latte</option>
+              <option value="nord-light">Nord Light</option>
+              <option value="paper-light">Paper Light</option>
+              <option value="rose-pine-dawn">Rosé Pine Dawn</option>
+            </optgroup>
           </select>
         </div>
         <div class="field">
           <label>Preview</label>
-          <pre class="font-preview" id="fontPreview">TinyConnect terminal
+          <div class="font-preview-wrap">
+            <div class="font-preview-meta" id="fontPreviewMeta">System Mono · Tiny Dark · 14px</div>
+            <pre class="font-preview" id="fontPreview">TinyConnect terminal
 $ ssh prod
 中文输出 abc 123
 codex ready</pre>
+          </div>
         </div>
         <div class="field">
           <label for="keepaliveInput">Keepalive interval</label>

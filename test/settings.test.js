@@ -32,6 +32,8 @@ test('clamps terminal font size between 10 and 24 and keepalive interval', () =>
   assert.equal(normalizeSettings({ fontSize: 6 }).fontSize, 10);
   assert.equal(normalizeSettings({ fontFamily: 'jetbrains' }).fontFamily, 'jetbrains');
   assert.equal(normalizeSettings({ theme: 'dracula' }).theme, 'dracula');
+  assert.equal(normalizeSettings({ theme: 'github-light' }).theme, 'github-light');
+  assert.equal(normalizeSettings({ theme: 'catppuccin-latte' }).theme, 'catppuccin-latte');
 });
 
 test('rejects unsupported disconnect timeout values by using default', () => {

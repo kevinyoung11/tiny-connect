@@ -16,6 +16,32 @@ const FONT_STACKS = {
   'noto-cjk': '"Noto Sans Mono CJK SC","Noto Sans Mono CJK","SF Mono",monospace'
 };
 
+const FONT_LABELS = {
+  system: 'System Mono',
+  jetbrains: 'JetBrains Mono',
+  fira: 'Fira Code',
+  cascadia: 'Cascadia Code',
+  hack: 'Hack',
+  meslo: 'Meslo / Nerd Font',
+  'noto-cjk': 'Noto Sans Mono CJK'
+};
+
+const THEME_LABELS = {
+  'tiny-dark': 'Tiny Dark',
+  'tokyo-night': 'Tokyo Night',
+  dracula: 'Dracula',
+  nord: 'Nord',
+  catppuccin: 'Catppuccin Mocha',
+  'solarized-dark': 'Solarized Dark',
+  'gruvbox-dark': 'Gruvbox Dark',
+  'github-light': 'GitHub Light',
+  'solarized-light': 'Solarized Light',
+  'catppuccin-latte': 'Catppuccin Latte',
+  'nord-light': 'Nord Light',
+  'paper-light': 'Paper Light',
+  'rose-pine-dawn': 'Rose Pine Dawn'
+};
+
 const TERM_THEMES = {
   'tiny-dark': {
     background: '#09090d', foreground: '#c8ccd6', cursor: '#00d4aa', cursorAccent: '#09090d',
@@ -28,7 +54,13 @@ const TERM_THEMES = {
   nord: { background: '#2e3440', foreground: '#d8dee9', cursor: '#88c0d0', black: '#3b4252', red: '#bf616a', green: '#a3be8c', yellow: '#ebcb8b', blue: '#81a1c1', magenta: '#b48ead', cyan: '#88c0d0', white: '#e5e9f0', brightBlack: '#4c566a', brightRed: '#bf616a', brightGreen: '#a3be8c', brightYellow: '#ebcb8b', brightBlue: '#81a1c1', brightMagenta: '#b48ead', brightCyan: '#8fbcbb', brightWhite: '#eceff4' },
   catppuccin: { background: '#1e1e2e', foreground: '#cdd6f4', cursor: '#f5e0dc', black: '#45475a', red: '#f38ba8', green: '#a6e3a1', yellow: '#f9e2af', blue: '#89b4fa', magenta: '#f5c2e7', cyan: '#94e2d5', white: '#bac2de', brightBlack: '#585b70', brightRed: '#f38ba8', brightGreen: '#a6e3a1', brightYellow: '#f9e2af', brightBlue: '#89b4fa', brightMagenta: '#f5c2e7', brightCyan: '#94e2d5', brightWhite: '#a6adc8' },
   'solarized-dark': { background: '#002b36', foreground: '#839496', cursor: '#93a1a1', black: '#073642', red: '#dc322f', green: '#859900', yellow: '#b58900', blue: '#268bd2', magenta: '#d33682', cyan: '#2aa198', white: '#eee8d5', brightBlack: '#002b36', brightRed: '#cb4b16', brightGreen: '#586e75', brightYellow: '#657b83', brightBlue: '#839496', brightMagenta: '#6c71c4', brightCyan: '#93a1a1', brightWhite: '#fdf6e3' },
-  'gruvbox-dark': { background: '#282828', foreground: '#ebdbb2', cursor: '#fabd2f', black: '#282828', red: '#cc241d', green: '#98971a', yellow: '#d79921', blue: '#458588', magenta: '#b16286', cyan: '#689d6a', white: '#a89984', brightBlack: '#928374', brightRed: '#fb4934', brightGreen: '#b8bb26', brightYellow: '#fabd2f', brightBlue: '#83a598', brightMagenta: '#d3869b', brightCyan: '#8ec07c', brightWhite: '#ebdbb2' }
+  'gruvbox-dark': { background: '#282828', foreground: '#ebdbb2', cursor: '#fabd2f', black: '#282828', red: '#cc241d', green: '#98971a', yellow: '#d79921', blue: '#458588', magenta: '#b16286', cyan: '#689d6a', white: '#a89984', brightBlack: '#928374', brightRed: '#fb4934', brightGreen: '#b8bb26', brightYellow: '#fabd2f', brightBlue: '#83a598', brightMagenta: '#d3869b', brightCyan: '#8ec07c', brightWhite: '#ebdbb2' },
+  'github-light': { background: '#ffffff', foreground: '#24292f', cursor: '#0969da', black: '#24292f', red: '#cf222e', green: '#116329', yellow: '#4d2d00', blue: '#0969da', magenta: '#8250df', cyan: '#1b7c83', white: '#6e7781', brightBlack: '#57606a', brightRed: '#a40e26', brightGreen: '#1a7f37', brightYellow: '#9a6700', brightBlue: '#218bff', brightMagenta: '#a475f9', brightCyan: '#3192aa', brightWhite: '#8c959f' },
+  'solarized-light': { background: '#fdf6e3', foreground: '#657b83', cursor: '#586e75', black: '#073642', red: '#dc322f', green: '#859900', yellow: '#b58900', blue: '#268bd2', magenta: '#d33682', cyan: '#2aa198', white: '#eee8d5', brightBlack: '#002b36', brightRed: '#cb4b16', brightGreen: '#586e75', brightYellow: '#657b83', brightBlue: '#839496', brightMagenta: '#6c71c4', brightCyan: '#93a1a1', brightWhite: '#fdf6e3' },
+  'catppuccin-latte': { background: '#eff1f5', foreground: '#4c4f69', cursor: '#dc8a78', black: '#5c5f77', red: '#d20f39', green: '#40a02b', yellow: '#df8e1d', blue: '#1e66f5', magenta: '#ea76cb', cyan: '#179299', white: '#acb0be', brightBlack: '#6c6f85', brightRed: '#d20f39', brightGreen: '#40a02b', brightYellow: '#df8e1d', brightBlue: '#1e66f5', brightMagenta: '#ea76cb', brightCyan: '#179299', brightWhite: '#bcc0cc' },
+  'nord-light': { background: '#eceff4', foreground: '#2e3440', cursor: '#5e81ac', black: '#3b4252', red: '#bf616a', green: '#a3be8c', yellow: '#d08770', blue: '#5e81ac', magenta: '#b48ead', cyan: '#88c0d0', white: '#e5e9f0', brightBlack: '#4c566a', brightRed: '#bf616a', brightGreen: '#a3be8c', brightYellow: '#ebcb8b', brightBlue: '#81a1c1', brightMagenta: '#b48ead', brightCyan: '#8fbcbb', brightWhite: '#ffffff' },
+  'paper-light': { background: '#f8f5ed', foreground: '#2f2a24', cursor: '#7c5c28', black: '#2f2a24', red: '#a33b3b', green: '#587539', yellow: '#9a6a1f', blue: '#3d6f9f', magenta: '#7c4f8b', cyan: '#3f7b72', white: '#d8d0c2', brightBlack: '#8b8378', brightRed: '#c44949', brightGreen: '#6d8d45', brightYellow: '#b98228', brightBlue: '#4a83ba', brightMagenta: '#9362a4', brightCyan: '#4f9488', brightWhite: '#fffaf0' },
+  'rose-pine-dawn': { background: '#faf4ed', foreground: '#575279', cursor: '#d7827e', black: '#575279', red: '#b4637a', green: '#286983', yellow: '#ea9d34', blue: '#56949f', magenta: '#907aa9', cyan: '#d7827e', white: '#cecacd', brightBlack: '#9893a5', brightRed: '#b4637a', brightGreen: '#286983', brightYellow: '#ea9d34', brightBlue: '#56949f', brightMagenta: '#907aa9', brightCyan: '#d7827e', brightWhite: '#f2e9e1' }
 };
 
 /* ─── Terminal theme ─────────────────────────────────────────────────────── */
@@ -109,6 +141,7 @@ const fontSizeValue     = document.querySelector('#fontSizeValue');
 const fontFamilyInput   = document.querySelector('#fontFamilyInput');
 const themeInput        = document.querySelector('#themeInput');
 const fontPreview       = document.querySelector('#fontPreview');
+const fontPreviewMeta   = document.querySelector('#fontPreviewMeta');
 const keepaliveInput    = document.querySelector('#keepaliveInput');
 const disconnectTimeoutInput = document.querySelector('#disconnectTimeoutInput');
 const autoReconnectInput = document.querySelector('#autoReconnectInput');
@@ -1020,6 +1053,14 @@ function applySettings(settings) {
     fontPreview.style.fontFamily = TERM_OPTS.fontFamily;
     fontPreview.style.background = TERM_OPTS.theme.background;
     fontPreview.style.color = TERM_OPTS.theme.foreground;
+    fontPreview.style.borderColor = TERM_OPTS.theme.cursor || 'var(--border)';
+  }
+  if (fontPreviewMeta) {
+    fontPreviewMeta.textContent = `${FONT_LABELS[appSettings.fontFamily] || appSettings.fontFamily} · ${THEME_LABELS[appSettings.theme] || appSettings.theme} · ${appSettings.fontSize}px`;
+    fontPreviewMeta.style.fontFamily = TERM_OPTS.fontFamily;
+    fontPreviewMeta.style.background = TERM_OPTS.theme.background;
+    fontPreviewMeta.style.color = TERM_OPTS.theme.foreground;
+    fontPreviewMeta.style.borderColor = TERM_OPTS.theme.cursor || 'var(--border)';
   }
   for (const sess of sessions) {
     sess.term.options.fontSize = appSettings.fontSize;

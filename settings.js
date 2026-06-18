@@ -10,7 +10,21 @@ export const defaultSettings = {
 
 const disconnectTimeouts = new Set(['5m', '30m', '2h', 'never']);
 const fontFamilies = new Set(['system', 'jetbrains', 'fira', 'cascadia', 'hack', 'meslo', 'noto-cjk']);
-const themes = new Set(['tiny-dark', 'tokyo-night', 'dracula', 'nord', 'catppuccin', 'solarized-dark', 'gruvbox-dark']);
+const themes = new Set([
+  'tiny-dark',
+  'tokyo-night',
+  'dracula',
+  'nord',
+  'catppuccin',
+  'solarized-dark',
+  'gruvbox-dark',
+  'github-light',
+  'solarized-light',
+  'catppuccin-latte',
+  'nord-light',
+  'paper-light',
+  'rose-pine-dawn'
+]);
 
 export function normalizeSettings(input = {}) {
   return {

@@ -36,8 +36,13 @@ test('terminal shell exposes recovery status, debug, snippets, and copy scopes',
   assert.ok(html.includes('id="debugSheet"'));
   assert.ok(html.includes('id="fontFamilyInput"'));
   assert.ok(html.includes('id="themeInput"'));
+  assert.ok(html.includes('id="fontPreviewMeta"'));
+  assert.ok(html.includes('<optgroup label="Dark">'));
+  assert.ok(html.includes('<optgroup label="Light">'));
   assert.ok(html.includes('value="tokyo-night"'));
   assert.ok(html.includes('value="dracula"'));
+  assert.ok(html.includes('value="github-light"'));
+  assert.ok(html.includes('value="catppuccin-latte"'));
   assert.ok(html.includes('data-draft="git status"'));
   assert.ok(html.includes('data-copy-scope="screen"'));
   assert.ok(html.includes('data-copy-scope="all"'));

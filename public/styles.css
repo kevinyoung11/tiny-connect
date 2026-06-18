@@ -511,12 +511,27 @@ label {
   color: var(--text-2);
   font: 12px/1 var(--mono);
 }
+.font-preview-wrap {
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  background: rgba(0,0,0,.18);
+}
+.font-preview-meta {
+  min-height: 32px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text-2);
+  font-size: 12px;
+  line-height: 1.2;
+}
 .font-preview {
   min-height: 94px;
   padding: 12px;
   overflow: auto;
-  border: 1px solid var(--border);
-  border-radius: var(--r);
+  border: none;
+  border-top: 1px solid var(--border);
+  border-radius: 0;
   background: rgba(0,0,0,.26);
   color: var(--text);
   font-family: var(--mono);
