@@ -140,12 +140,19 @@ test('agent runner starts selected ssh codex tasks inside a remote tmux session'
   createdClients[1].emit('ready');
   await flushAsyncHandlers();
   createdClients[1].execStream.emit('close', 0);
+  await flushAsyncHandlers();
+  createdClients[2].emit('ready');
+  await flushAsyncHandlers();
+  createdClients[2].execStream.emit('data', Buffer.from('Codex ready\n'));
+  createdClients[2].execStream.emit('close', 0);
   await started;
 
   assert.equal(createdClients[0].execCommand, "tmux new-session -A -d -s 'tc-codex-remote' codex");
   assert.equal(createdClients[1].execCommand, "tmux send-keys -t 'tc-codex-remote' 'hello' Enter");
+  assert.equal(createdClients[2].execCommand, "tmux capture-pane -p -t 'tc-codex-remote' -S '-2000'");
   const updated = await store.getTask({ userId: 'user_1', taskId: task.id });
   assert.equal(updated.status, 'running');
+  assert.equal(updated.outputTail, 'Codex ready\n');
   assert.equal(updated.runnerCommand, 'ssh-tmux:dev.example.com:tc-codex-remote');
   assert.equal(updated.metadata.sshMode, 'tmux');
 });
@@ -198,6 +205,47 @@ test('agent runner sends input and captures output for selected ssh tmux tasks',
   assert.equal(createdClients[1].execCommand, "tmux capture-pane -p -t 'tc-codex-remote' -S '-2000'");
   assert.equal(result.output, 'codex reply\n');
   assert.equal((await store.getTask({ userId: 'user_1', taskId: task.id })).outputTail, 'codex reply\n');
+});
+
+test('agent runner includes remote stderr when selected ssh tmux commands fail', async () => {
+  const store = createMemoryAgentStore();
+  const createdClients = [];
+  const runner = createAgentRunner({
+    store,
+    sshClientFactory: () => {
+      const client = createFakeSshClient();
+      createdClients.push(client);
+      return client;
+    },
+    profileStore: createProfileStore([{
+      id: 'profile_1',
+      host: 'dev.example.com',
+      port: 22,
+      username: 'deploy'
+    }]),
+    keyStore: createKeyStore()
+  });
+  const task = await store.createTask({
+    userId: 'user_1',
+    title: 'Codex',
+    kind: 'codex',
+    prompt: 'hello',
+    status: 'running',
+    riskLevel: 'safe',
+    tmuxSession: 'tc-codex-remote',
+    metadata: { profileId: 'profile_1', sshMode: 'tmux' }
+  });
+
+  const send = assert.rejects(
+    () => runner.sendInput({ userId: 'user_1', taskId: task.id, input: 'continue' }),
+    /remote command exited 127: tmux: command not found/
+  );
+  await flushAsyncHandlers();
+  createdClients[0].emit('ready');
+  await flushAsyncHandlers();
+  createdClients[0].execStream.stderr.emit('data', Buffer.from('tmux: command not found\n'));
+  createdClients[0].execStream.emit('close', 127);
+  await send;
 });
 
 test('agent runner keeps cancelled status when killed task exits later', async () => {

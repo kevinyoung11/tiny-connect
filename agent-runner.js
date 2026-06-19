@@ -128,6 +128,7 @@ export function createAgentRunner({ store, spawnImpl = spawn, sshClientFactory =
           onOutput: (chunk) => store.appendOutput({ userId, taskId: task.id, chunk: chunk.toString('utf8') })
         });
       }
+      await captureRemoteTmuxOutput({ userId, taskId: task.id, profile, tmuxSession: task.tmuxSession, lines: 2000 });
       await store.logAudit?.({ userId, taskId: task.id, event: 'tmux_session_started', message: task.tmuxSession || '' });
     } catch (error) {
       await store.updateTask({ userId, taskId: task.id, patch: { status: 'failed', error: error.message } });
@@ -135,6 +136,18 @@ export function createAgentRunner({ store, spawnImpl = spawn, sshClientFactory =
       throw error;
     }
     return { pid: null };
+  }
+
+  async function captureRemoteTmuxOutput({ userId, taskId, profile, tmuxSession, lines }) {
+    let output = '';
+    await runSshExec({
+      profile,
+      privateKey: profile.privateKey,
+      commandLine: buildRemoteTmuxCaptureCommand(tmuxSession, lines),
+      onOutput: async (chunk) => { output += chunk.toString('utf8'); }
+    });
+    await replaceOutput({ userId, taskId, output });
+    return output;
   }
 
   async function getProfileWithKey({ userId, profileId }) {
@@ -161,6 +174,7 @@ export function createAgentRunner({ store, spawnImpl = spawn, sshClientFactory =
     return new Promise((resolve, reject) => {
       const client = sshClientFactory();
       let settled = false;
+      let errorOutput = '';
       const finish = (error) => {
         if (settled) return;
         settled = true;
@@ -174,10 +188,16 @@ export function createAgentRunner({ store, spawnImpl = spawn, sshClientFactory =
             return;
           }
           stream.on('data', (chunk) => onOutput(chunk).catch(() => {}));
-          stream.stderr?.on('data', (chunk) => onOutput(chunk).catch(() => {}));
+          stream.stderr?.on('data', (chunk) => {
+            errorOutput += chunk.toString('utf8');
+            onOutput(chunk).catch(() => {});
+          });
           stream.on('close', (code) => {
             if (code === 0) finish();
-            else finish(new Error(`remote command exited ${code}`));
+            else {
+              const detail = errorOutput.trim();
+              finish(new Error(detail ? `remote command exited ${code}: ${detail}` : `remote command exited ${code}`));
+            }
           });
         });
       });
@@ -226,14 +246,7 @@ export function createAgentRunner({ store, spawnImpl = spawn, sshClientFactory =
     const task = await store.getTask({ userId, taskId });
     if (isRemoteTmuxBacked(task)) {
       const profile = await getProfileWithKey({ userId, profileId: task.metadata.profileId });
-      let output = '';
-      await runSshExec({
-        profile,
-        privateKey: profile.privateKey,
-        commandLine: buildRemoteTmuxCaptureCommand(task.tmuxSession, lines),
-        onOutput: async (chunk) => { output += chunk.toString('utf8'); }
-      });
-      await replaceOutput({ userId, taskId, output });
+      const output = await captureRemoteTmuxOutput({ userId, taskId, profile, tmuxSession: task.tmuxSession, lines });
       await store.logAudit?.({ userId, taskId, event: 'output_captured', message: task.tmuxSession });
       return { output };
     }
