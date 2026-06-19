@@ -61,6 +61,71 @@ test('agent console refreshes and reports errors when sending input fails', asyn
   }
 });
 
+test('agent console refreshes and reports errors when resolving approval fails', async () => {
+  const originalDocument = globalThis.document;
+  const originalRequestAnimationFrame = globalThis.requestAnimationFrame;
+  const originalFetch = globalThis.fetch;
+  const dom = createAgentConsoleDom();
+  const calls = [];
+  const toasts = [];
+  globalThis.document = dom.document;
+  globalThis.requestAnimationFrame = (fn) => fn();
+  globalThis.fetch = async (url, init = {}) => {
+    calls.push({ url, init });
+    if (url === '/api/agent/snapshot') {
+      const snapshotCount = calls.filter((call) => call.url === '/api/agent/snapshot').length;
+      return jsonResponse({
+        tasks: [{
+          id: 'task_1',
+          title: 'Deploy safely',
+          kind: 'codex',
+          status: snapshotCount === 1 ? 'waiting_approval' : 'failed',
+          riskLevel: 'high'
+        }],
+        approvals: snapshotCount === 1 ? [{
+          id: 'approval_1',
+          taskId: 'task_1',
+          status: 'pending',
+          riskLevel: 'high',
+          command: 'git push origin main'
+        }] : []
+      });
+    }
+    if (url === '/api/agent/approvals/approval_1/resolve') {
+      return jsonResponse({ error: 'session not found: tc-codex' }, { ok: false, status: 404 });
+    }
+    return jsonResponse({});
+  };
+
+  let consoleController = null;
+  try {
+    consoleController = initAgentConsole({
+      withIdentity: (init = {}) => init,
+      toast: (message, level) => toasts.push({ message, level })
+    });
+    dom.agentBtn.dispatch('click');
+    await flushAsyncHandlers();
+    const approveButton = findElement(dom.agentApprovalList, (element) => element.dataset.approvalAction === 'approved');
+
+    await dom.agentApprovalList.dispatch('click', { target: approveButton });
+
+    assert.deepEqual(calls.map((call) => [call.url, call.init.method || 'GET']), [
+      ['/api/agent/snapshot', 'GET'],
+      ['/api/agent/approvals/approval_1/resolve', 'POST'],
+      ['/api/agent/snapshot', 'GET']
+    ]);
+    assert.equal(toasts[0].message, 'session not found: tc-codex');
+    assert.equal(toasts[0].level, 'err');
+    assert.match(collectText(dom.agentTaskList), /failed/);
+    assert.match(collectText(dom.agentApprovalList), /No pending approvals/);
+  } finally {
+    consoleController?.close();
+    globalThis.document = originalDocument;
+    globalThis.requestAnimationFrame = originalRequestAnimationFrame;
+    globalThis.fetch = originalFetch;
+  }
+});
+
 function createAgentConsoleDom() {
   const byId = new Map();
   const elements = {
@@ -138,7 +203,7 @@ function createElement(tagName) {
     },
     async dispatch(type, event = {}) {
       for (const handler of this.listeners[type] || []) {
-        await handler({ target: this, ...event });
+        await handler({ ...event, target: event.target || this });
       }
     }
   };
@@ -162,4 +227,13 @@ function collectText(node) {
     node.textContent || '',
     ...(node.children || []).map(collectText)
   ].filter(Boolean).join(' ');
+}
+
+function findElement(node, predicate) {
+  if (predicate(node)) return node;
+  for (const child of node.children || []) {
+    const match = findElement(child, predicate);
+    if (match) return match;
+  }
+  return null;
 }

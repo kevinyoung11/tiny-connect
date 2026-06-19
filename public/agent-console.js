@@ -71,8 +71,13 @@ export function initAgentConsole({ withIdentity = (init) => init, toast = () => 
   approvalList?.addEventListener('click', async (event) => {
     const button = event.target.closest('[data-approval-action]');
     if (!button) return;
-    await api.resolveApproval(button.dataset.approvalId, button.dataset.approvalAction);
-    await refresh();
+    try {
+      await api.resolveApproval(button.dataset.approvalId, button.dataset.approvalAction);
+    } catch (error) {
+      toast(error.message, 'err');
+    } finally {
+      await refresh();
+    }
   });
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
