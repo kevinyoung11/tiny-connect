@@ -228,7 +228,7 @@ async function createTaskFlow({ req, store, runner, getScope }) {
     });
     await store.logAudit?.({ ...scope, taskId: task.id, event: 'approval_requested', message: approval.reason });
   } else {
-    await runner.startTask({ ...scope, task });
+    await startTaskOrMarkFailed({ store, runner, scope, task });
   }
 
   return { task: await store.getTask({ ...scope, taskId: task.id }), approval };
@@ -245,7 +245,7 @@ async function resolveApprovalFlow({ req, store, runner, getScope, approvalId })
       await store.updateTask({ ...scope, taskId: task.id, patch: { status: 'running' } });
     } else {
       await store.updateTask({ ...scope, taskId: task.id, patch: { status: 'queued' } });
-      await runner.startTask({ ...scope, task: await store.getTask({ ...scope, taskId: task.id }) });
+      await startTaskOrMarkFailed({ store, runner, scope, task: await store.getTask({ ...scope, taskId: task.id }) });
     }
   } else {
     await store.updateTask({ ...scope, taskId: task.id, patch: { status: approval.metadata?.mode === 'command' ? 'running' : 'cancelled' } });
@@ -254,14 +254,21 @@ async function resolveApprovalFlow({ req, store, runner, getScope, approvalId })
   return { approval, task: await store.getTask({ ...scope, taskId: task.id }) };
 }
 
+async function startTaskOrMarkFailed({ store, runner, scope, task }) {
+  try {
+    await runner.startTask({ ...scope, task });
+  } catch (error) {
+    await markTaskFailed({ store, scope, taskId: task.id, message: error.message });
+    throw error;
+  }
+}
+
 async function sendTaskInputFlow({ store, runner, scope, taskId, input }) {
   try {
     await runner.sendInput({ ...scope, taskId, input });
   } catch (error) {
     if (isMissingTmuxSessionError(error)) {
-      const task = await store.getTask({ ...scope, taskId });
-      await store.updateTask({ ...scope, taskId: task.id, patch: { status: 'failed', error: error.message } });
-      await store.logAudit?.({ ...scope, taskId: task.id, event: 'task_failed', message: error.message });
+      await markTaskFailed({ store, scope, taskId, message: error.message });
     }
     throw error;
   }
@@ -297,12 +304,17 @@ async function refreshTaskOutput({ store, runner, scope, taskId }) {
     return await store.getTask({ ...scope, taskId });
   } catch (error) {
     if (isMissingTmuxSessionError(error)) {
-      await store.updateTask({ ...scope, taskId: task.id, patch: { status: 'failed', error: error.message } });
-      await store.logAudit?.({ ...scope, taskId: task.id, event: 'task_failed', message: error.message });
+      await markTaskFailed({ store, scope, taskId: task.id, message: error.message });
       return await store.getTask({ ...scope, taskId });
     }
     return task;
   }
+}
+
+async function markTaskFailed({ store, scope, taskId, message }) {
+  const task = await store.getTask({ ...scope, taskId });
+  await store.updateTask({ ...scope, taskId: task.id, patch: { status: 'failed', error: message } });
+  await store.logAudit?.({ ...scope, taskId: task.id, event: 'task_failed', message });
 }
 
 function isMissingTmuxSessionError(error) {

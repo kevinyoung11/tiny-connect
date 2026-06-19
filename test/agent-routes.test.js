@@ -30,6 +30,26 @@ test('agent routes create safe tasks and start runner', async () => {
   assert.equal(snapshot.body.approvals.length, 0);
 });
 
+test('agent routes mark created tasks failed when runner start fails', async () => {
+  const store = createMemoryAgentStore();
+  const app = createTestApp(store, {
+    async startTask() {
+      throw new Error('codex executable missing');
+    }
+  });
+
+  const res = await requestJson(app, '/api/agent/tasks', {
+    method: 'POST',
+    body: { kind: 'codex', prompt: 'work', title: 'Runner missing' }
+  });
+  const tasks = await store.listTasks({ userId: 'user_1' });
+
+  assert.equal(res.status, 400);
+  assert.equal(tasks.length, 1);
+  assert.equal(tasks[0].status, 'failed');
+  assert.equal(tasks[0].error, 'codex executable missing');
+});
+
 test('agent routes require approval for high-risk tasks and approval starts runner', async () => {
   const store = createMemoryAgentStore();
   const started = [];
@@ -58,6 +78,29 @@ test('agent routes require approval for high-risk tasks and approval starts runn
   assert.equal(resolved.status, 200);
   assert.equal(resolved.body.approval.status, 'approved');
   assert.equal(started.length, 1);
+});
+
+test('agent routes mark approved tasks failed when runner start fails', async () => {
+  const store = createMemoryAgentStore();
+  const app = createTestApp(store, {
+    async startTask() {
+      throw new Error('claude executable missing');
+    }
+  });
+  const created = await requestJson(app, '/api/agent/tasks', {
+    method: 'POST',
+    body: { kind: 'claude', prompt: 'git push origin main', title: 'Approval runner missing' }
+  });
+
+  const resolved = await requestJson(app, `/api/agent/approvals/${created.body.approval.id}/resolve`, {
+    method: 'POST',
+    body: { status: 'approved' }
+  });
+  const task = await store.getTask({ userId: 'user_1', taskId: created.body.task.id });
+
+  assert.equal(resolved.status, 400);
+  assert.equal(task.status, 'failed');
+  assert.equal(task.error, 'claude executable missing');
 });
 
 test('mcp tool endpoint creates agent task', async () => {
