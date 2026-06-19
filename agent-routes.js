@@ -20,9 +20,19 @@ export function createAgentRouter({ store, runner, getScope, mcpOnly = false } =
       const scope = await getScope(req);
       res.json(await taskDetail({ store, runner, scope, taskId: req.body?.taskId }));
     }));
+    router.post('/get_agent_output', asyncHandler(async (req, res) => {
+      const scope = await getScope(req);
+      await refreshTaskOutput({ store, runner, scope, taskId: req.body?.taskId });
+      const task = await store.getTask({ ...scope, taskId: req.body?.taskId });
+      res.json({ output: task.outputTail || '' });
+    }));
     router.post('/list_pending_approvals', asyncHandler(async (req, res) => {
       const scope = await getScope(req);
       res.json({ approvals: await store.listApprovals({ ...scope, status: 'pending' }) });
+    }));
+    router.post('/get_agent_approval', asyncHandler(async (req, res) => {
+      const scope = await getScope(req);
+      res.json({ approval: await store.getApproval({ ...scope, approvalId: req.body?.approvalId }) });
     }));
     router.post('/resolve_approval', asyncHandler(async (req, res) => {
       const result = await resolveApprovalFlow({ req, store, runner, getScope, approvalId: req.body?.approvalId });
@@ -36,6 +46,16 @@ export function createAgentRouter({ store, runner, getScope, mcpOnly = false } =
     router.post('/request_agent_approval', asyncHandler(async (req, res) => {
       const result = await requestTaskApprovalFlow({ req, store, getScope, taskId: req.body?.taskId });
       res.status(201).json(result);
+    }));
+    router.post('/get_agent_delivery', asyncHandler(async (req, res) => {
+      const scope = await getScope(req);
+      res.json({ delivery: await store.getDelivery({ ...scope, taskId: req.body?.taskId }) });
+    }));
+    router.post('/update_agent_delivery', asyncHandler(async (req, res) => {
+      const scope = await getScope(req);
+      const taskId = req.body?.taskId || req.body?.task_id;
+      const delivery = await store.updateDelivery({ ...scope, taskId, patch: req.body || {} });
+      res.json({ delivery });
     }));
     return router;
   }

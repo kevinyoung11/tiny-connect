@@ -529,6 +529,59 @@ test('mcp tool endpoint creates running command approvals', async () => {
   assert.equal(requested.body.task.status, 'waiting_approval');
 });
 
+test('mcp tool endpoints expose approval detail output and delivery state', async () => {
+  const store = createMemoryAgentStore();
+  const app = createTestApp(store, {
+    async startTask({ userId, task }) {
+      await store.updateTask({ userId, taskId: task.id, patch: { status: 'running' } });
+    },
+    async sendInput() {},
+    async captureOutput({ userId, taskId }) {
+      await store.replaceOutput({ userId, taskId, output: 'captured via mcp' });
+      return { output: 'captured via mcp' };
+    }
+  });
+  const created = await requestJson(app, '/api/mcp/tools/create_agent_task', {
+    method: 'POST',
+    body: { kind: 'codex', prompt: 'work safely', title: 'MCP parity' }
+  });
+  const output = await requestJson(app, '/api/mcp/tools/get_agent_output', {
+    method: 'POST',
+    body: { taskId: created.body.task.id }
+  });
+  const requested = await requestJson(app, '/api/mcp/tools/request_agent_approval', {
+    method: 'POST',
+    body: { taskId: created.body.task.id, command: 'git push origin main' }
+  });
+
+  const approval = await requestJson(app, '/api/mcp/tools/get_agent_approval', {
+    method: 'POST',
+    body: { approvalId: requested.body.approval.id }
+  });
+  const updatedDelivery = await requestJson(app, '/api/mcp/tools/update_agent_delivery', {
+    method: 'POST',
+    body: {
+      taskId: created.body.task.id,
+      prUrl: 'https://github.test/repo/pull/3',
+      ciStatus: 'passed',
+      summary: 'MCP delivery'
+    }
+  });
+  const delivery = await requestJson(app, '/api/mcp/tools/get_agent_delivery', {
+    method: 'POST',
+    body: { taskId: created.body.task.id }
+  });
+
+  assert.equal(approval.status, 200);
+  assert.equal(approval.body.approval.command, 'git push origin main');
+  assert.equal(output.status, 200);
+  assert.equal(output.body.output, 'captured via mcp');
+  assert.equal(updatedDelivery.status, 200);
+  assert.equal(updatedDelivery.body.delivery.ciStatus, 'passed');
+  assert.equal(delivery.body.delivery.prUrl, 'https://github.test/repo/pull/3');
+  assert.equal(delivery.body.delivery.summary, 'MCP delivery');
+});
+
 function createTestApp(store, runner) {
   const app = express();
   app.use(express.json());

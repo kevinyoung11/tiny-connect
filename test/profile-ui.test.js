@@ -50,6 +50,13 @@ test('terminal shell exposes recovery status, debug, snippets, and copy scopes',
   assert.ok(html.includes('data-copy-scope="tail"'));
 });
 
+test('startup data loaders ignore missing Supabase configuration errors', () => {
+  const js = readFileSync(resolve('public/client.js'), 'utf8');
+
+  assert.match(js, /function isSupabaseConfigError\(error\)/);
+  assert.match(js, /if \(!isSupabaseConfigError\(err\)\) toast\(err\.message, 'err'\);/);
+});
+
 test('mobile terminal viewport keeps native momentum scrolling enabled', () => {
   const css = readFileSync(resolve('public/styles.css'), 'utf8');
   const js = readFileSync(resolve('public/client.js'), 'utf8');

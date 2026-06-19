@@ -1135,9 +1135,13 @@ async function loadSettings() {
     if (res.ok) applySettings(body.settings || {});
     else throw new Error(body.error || 'Settings unavailable');
   } catch (err) {
-    toast(err.message, 'err');
+    if (!isSupabaseConfigError(err)) toast(err.message, 'err');
   }
   renderSettingsForm();
+}
+
+function isSupabaseConfigError(error) {
+  return /Supabase is not configured/i.test(error?.message || '');
 }
 
 function applySettings(settings) {
