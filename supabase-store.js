@@ -171,12 +171,26 @@ export async function initializeSupabaseSchema(pool) {
       task_id           TEXT PRIMARY KEY REFERENCES agent_tasks(id) ON DELETE CASCADE,
       user_id           TEXT NOT NULL REFERENCES app_users(id) ON DELETE CASCADE,
       pr_url            TEXT NOT NULL DEFAULT '',
+      pr_number         INTEGER,
+      branch            TEXT NOT NULL DEFAULT '',
+      commit_sha        TEXT NOT NULL DEFAULT '',
       ci_status         TEXT NOT NULL DEFAULT 'unknown',
+      ci_url            TEXT NOT NULL DEFAULT '',
+      preview_url       TEXT NOT NULL DEFAULT '',
+      deployment_url    TEXT NOT NULL DEFAULT '',
       deployment_status TEXT NOT NULL DEFAULT 'none',
+      delivery_status   TEXT NOT NULL DEFAULT 'none',
       summary           TEXT NOT NULL DEFAULT '',
       updated_at        TIMESTAMPTZ DEFAULT NOW()
     )
   `);
+  await pool.query(`ALTER TABLE agent_delivery ADD COLUMN IF NOT EXISTS pr_number INTEGER`);
+  await pool.query(`ALTER TABLE agent_delivery ADD COLUMN IF NOT EXISTS branch TEXT NOT NULL DEFAULT ''`);
+  await pool.query(`ALTER TABLE agent_delivery ADD COLUMN IF NOT EXISTS commit_sha TEXT NOT NULL DEFAULT ''`);
+  await pool.query(`ALTER TABLE agent_delivery ADD COLUMN IF NOT EXISTS ci_url TEXT NOT NULL DEFAULT ''`);
+  await pool.query(`ALTER TABLE agent_delivery ADD COLUMN IF NOT EXISTS preview_url TEXT NOT NULL DEFAULT ''`);
+  await pool.query(`ALTER TABLE agent_delivery ADD COLUMN IF NOT EXISTS deployment_url TEXT NOT NULL DEFAULT ''`);
+  await pool.query(`ALTER TABLE agent_delivery ADD COLUMN IF NOT EXISTS delivery_status TEXT NOT NULL DEFAULT 'none'`);
   await pool.query(`
     CREATE TABLE IF NOT EXISTS agent_audit_logs (
       id         TEXT PRIMARY KEY,
@@ -736,13 +750,22 @@ export function createSupabaseAgentStore() {
     },
 
     async updateDelivery({ userId, taskId, patch }) {
+      const current = await this.getDelivery({ userId, taskId }) || {};
+      const merged = { ...current, ...(patch || {}) };
       const row = {
         task_id: taskId,
         user_id: requireUserId({ userId }),
-        pr_url: sanitizeLogText(patch?.prUrl || patch?.pr_url || '', 1000),
-        ci_status: sanitizeLogText(patch?.ciStatus || patch?.ci_status || 'unknown', 40),
-        deployment_status: sanitizeLogText(patch?.deploymentStatus || patch?.deployment_status || 'none', 40),
-        summary: sanitizeLogText(patch?.summary || '', 1000),
+        pr_url: sanitizeLogText(merged.prUrl || merged.pr_url || '', 1000),
+        pr_number: Number.isFinite(Number(merged.prNumber ?? merged.pr_number)) ? Number(merged.prNumber ?? merged.pr_number) : null,
+        branch: sanitizeLogText(merged.branch || '', 300),
+        commit_sha: sanitizeLogText(merged.commitSha || merged.commit_sha || '', 120),
+        ci_status: sanitizeLogText(merged.ciStatus || merged.ci_status || 'unknown', 40),
+        ci_url: sanitizeLogText(merged.ciUrl || merged.ci_url || '', 1000),
+        preview_url: sanitizeLogText(merged.previewUrl || merged.preview_url || '', 1000),
+        deployment_url: sanitizeLogText(merged.deploymentUrl || merged.deployment_url || '', 1000),
+        deployment_status: sanitizeLogText(merged.deploymentStatus || merged.deployment_status || 'none', 40),
+        delivery_status: sanitizeLogText(merged.deliveryStatus || merged.delivery_status || 'none', 40),
+        summary: sanitizeLogText(merged.summary || '', 1000),
         updated_at: new Date().toISOString()
       };
       await sbCheck(
@@ -830,8 +853,15 @@ function toAgentDelivery(row) {
     taskId: row.task_id,
     userId: row.user_id,
     prUrl: row.pr_url || '',
+    prNumber: row.pr_number ?? null,
+    branch: row.branch || '',
+    commitSha: row.commit_sha || '',
     ciStatus: row.ci_status || 'unknown',
+    ciUrl: row.ci_url || '',
+    previewUrl: row.preview_url || '',
+    deploymentUrl: row.deployment_url || '',
     deploymentStatus: row.deployment_status || 'none',
+    deliveryStatus: row.delivery_status || 'none',
     summary: row.summary || '',
     updatedAt: row.updated_at
   };

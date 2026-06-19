@@ -132,3 +132,22 @@ test('memory agent store preserves approval metadata', async () => {
   assert.deepEqual((await store.resolveApproval({ userId: 'user_1', approvalId: approval.id, status: 'approved' })).metadata, { mode: 'command' });
   assert.deepEqual((await store.getApproval({ userId: 'user_1', approvalId: approval.id })).metadata, { mode: 'command' });
 });
+
+test('memory agent store merges delivery patches without clearing previous fields', async () => {
+  const store = createMemoryAgentStore();
+  const task = await store.createTask({
+    userId: 'user_1',
+    title: 'Delivery',
+    kind: 'shell',
+    prompt: 'echo ok',
+    status: 'running',
+    riskLevel: 'safe'
+  });
+
+  await store.updateDelivery({ userId: 'user_1', taskId: task.id, patch: { prUrl: 'https://example.test/pr/1', ciStatus: 'pending' } });
+  await store.updateDelivery({ userId: 'user_1', taskId: task.id, patch: { ciStatus: 'passed' } });
+
+  const delivery = await store.getDelivery({ userId: 'user_1', taskId: task.id });
+  assert.equal(delivery.prUrl, 'https://example.test/pr/1');
+  assert.equal(delivery.ciStatus, 'passed');
+});

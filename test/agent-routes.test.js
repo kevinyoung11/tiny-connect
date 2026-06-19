@@ -156,6 +156,70 @@ test('agent snapshot includes delivery state for each task', async () => {
   assert.equal(snapshot.body.tasks[0].delivery.ciStatus, 'passed');
 });
 
+test('agent delivery webhook maps pull request checks and deployment payloads', async () => {
+  const store = createMemoryAgentStore();
+  const app = createTestApp(store, {
+    async startTask({ userId, task }) {
+      await store.updateTask({ userId, taskId: task.id, patch: { status: 'running' } });
+    },
+    async sendInput() {}
+  });
+  const created = await requestJson(app, '/api/agent/tasks', {
+    method: 'POST',
+    body: { kind: 'shell', prompt: 'echo ok', title: 'Delivery webhook task' }
+  });
+
+  const pullRequest = await requestJson(app, '/api/agent/delivery/webhook', {
+    method: 'POST',
+    body: {
+      taskId: created.body.task.id,
+      event: 'pull_request',
+      action: 'opened',
+      pull_request: {
+        html_url: 'https://github.test/repo/pull/7',
+        number: 7,
+        head: { ref: 'agent/task-7', sha: 'abc123' }
+      }
+    }
+  });
+  assert.equal(pullRequest.body.delivery.prUrl, 'https://github.test/repo/pull/7');
+  assert.equal(pullRequest.body.delivery.prNumber, 7);
+  assert.equal(pullRequest.body.delivery.branch, 'agent/task-7');
+  assert.equal(pullRequest.body.delivery.commitSha, 'abc123');
+  assert.equal(pullRequest.body.delivery.deliveryStatus, 'open');
+
+  const checks = await requestJson(app, '/api/agent/delivery/webhook', {
+    method: 'POST',
+    body: {
+      taskId: created.body.task.id,
+      event: 'check_suite',
+      check_suite: {
+        conclusion: 'success',
+        html_url: 'https://github.test/repo/actions/runs/1'
+      }
+    }
+  });
+  assert.equal(checks.body.delivery.ciStatus, 'passed');
+  assert.equal(checks.body.delivery.ciUrl, 'https://github.test/repo/actions/runs/1');
+
+  const deployment = await requestJson(app, '/api/agent/delivery/webhook', {
+    method: 'POST',
+    body: {
+      taskId: created.body.task.id,
+      event: 'deployment_status',
+      deployment_status: {
+        state: 'success',
+        environment_url: 'https://preview.test',
+        target_url: 'https://deploy.test'
+      }
+    }
+  });
+  assert.equal(deployment.body.delivery.deploymentStatus, 'deployed');
+  assert.equal(deployment.body.delivery.previewUrl, 'https://preview.test');
+  assert.equal(deployment.body.delivery.deploymentUrl, 'https://deploy.test');
+  assert.equal((await store.listAuditLogs({ userId: 'user_1', taskId: created.body.task.id })).some((log) => log.event === 'delivery_updated'), true);
+});
+
 test('agent routes refresh tmux output through runner capture before returning detail and snapshot', async () => {
   const store = createMemoryAgentStore();
   const captured = [];

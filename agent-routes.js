@@ -112,7 +112,74 @@ export function createAgentRouter({ store, runner, getScope, mcpOnly = false } =
     res.json({ delivery });
   }));
 
+  router.post('/delivery/webhook', asyncHandler(async (req, res) => {
+    const scope = await getScope(req);
+    const result = await deliveryWebhookFlow({ req, store, scope });
+    res.json(result);
+  }));
+
   return router;
+}
+
+async function deliveryWebhookFlow({ req, store, scope }) {
+  const taskId = req.body?.taskId || req.body?.task_id;
+  if (!taskId) throw new Error('taskId is required');
+  const task = await store.getTask({ ...scope, taskId });
+  const patch = mapDeliveryWebhook(req.body || {});
+  const delivery = await store.updateDelivery({ ...scope, taskId: task.id, patch });
+  await store.logAudit?.({ ...scope, taskId: task.id, event: 'delivery_updated', message: req.body?.event || 'delivery_webhook', meta: { patch } });
+  return { delivery };
+}
+
+function mapDeliveryWebhook(payload) {
+  if (payload.event === 'pull_request') {
+    const pr = payload.pull_request || {};
+    return {
+      prUrl: pr.html_url || payload.prUrl || '',
+      prNumber: pr.number || payload.prNumber || null,
+      branch: pr.head?.ref || payload.branch || '',
+      commitSha: pr.head?.sha || payload.commitSha || '',
+      deliveryStatus: payload.action === 'closed' && pr.merged ? 'merged' : 'open',
+      summary: `Pull request ${payload.action || 'updated'}`
+    };
+  }
+  if (payload.event === 'check_suite' || payload.event === 'check_run') {
+    const check = payload.check_suite || payload.check_run || {};
+    return {
+      ciStatus: mapCiStatus(check.conclusion || check.status),
+      ciUrl: check.html_url || payload.ciUrl || '',
+      summary: `CI ${check.conclusion || check.status || 'updated'}`
+    };
+  }
+  if (payload.event === 'deployment_status') {
+    const status = payload.deployment_status || {};
+    return {
+      deploymentStatus: mapDeploymentStatus(status.state),
+      previewUrl: status.environment_url || payload.previewUrl || '',
+      deploymentUrl: status.target_url || payload.deploymentUrl || '',
+      summary: `Deployment ${status.state || 'updated'}`
+    };
+  }
+  return {
+    prUrl: payload.prUrl || payload.pr_url || '',
+    ciStatus: payload.ciStatus || payload.ci_status || 'unknown',
+    deploymentStatus: payload.deploymentStatus || payload.deployment_status || 'none',
+    summary: payload.summary || 'Delivery updated'
+  };
+}
+
+function mapCiStatus(value) {
+  if (value === 'success') return 'passed';
+  if (value === 'failure' || value === 'timed_out' || value === 'cancelled') return 'failed';
+  if (value === 'queued' || value === 'in_progress' || value === 'requested') return 'pending';
+  return value || 'unknown';
+}
+
+function mapDeploymentStatus(value) {
+  if (value === 'success') return 'deployed';
+  if (value === 'failure' || value === 'error') return 'failed';
+  if (value === 'in_progress' || value === 'queued' || value === 'pending') return 'pending';
+  return value || 'none';
 }
 
 async function requestTaskApprovalFlow({ req, store, getScope, taskId }) {

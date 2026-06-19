@@ -132,6 +132,7 @@ Per task delivery record:
 - CI status and CI URL.
 - preview URL.
 - deployment status.
+- delivery status.
 
 ## API Boundary
 
@@ -169,6 +170,9 @@ Per task delivery record:
 
 - `POST /api/agent/tasks/:id/delivery`
   Updates delivery state. First version is local/stubbed and later can be driven by GitHub webhooks.
+
+- `POST /api/agent/delivery/webhook`
+  Updates delivery state from GitHub-style webhook payloads. The first adapter maps `pull_request`, `check_suite` / `check_run`, and `deployment_status` into PR URL/number, branch, commit SHA, CI URL/status, preview URL, deployment URL/status, and delivery status. Payloads must include `taskId` until a GitHub App or branch-to-task resolver is added.
 
 ### MCP-Compatible API
 

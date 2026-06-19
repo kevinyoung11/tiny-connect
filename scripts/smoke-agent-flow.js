@@ -44,6 +44,25 @@ try {
   });
   assert(delivery.delivery.ciStatus === 'passed', 'delivery should be updated');
 
+  const webhookDelivery = await post('/api/agent/delivery/webhook', {
+    taskId: safe.task.id,
+    event: 'pull_request',
+    action: 'opened',
+    pull_request: {
+      html_url: 'https://example.test/pr/2',
+      number: 2,
+      head: { ref: 'agent/smoke', sha: 'smoke123' }
+    }
+  });
+  assert(webhookDelivery.delivery.prNumber === 2, 'delivery webhook should record pull request number');
+  const webhookCi = await post('/api/agent/delivery/webhook', {
+    taskId: safe.task.id,
+    event: 'check_suite',
+    check_suite: { conclusion: 'success', html_url: 'https://example.test/checks/2' }
+  });
+  assert(webhookCi.delivery.prUrl === 'https://example.test/pr/2', 'delivery webhook should preserve PR URL');
+  assert(webhookCi.delivery.ciStatus === 'passed', 'delivery webhook should map CI success');
+
   const mcp = await post('/api/mcp/tools/create_agent_task', { kind: 'shell', prompt: 'printf mcp-ok', title: 'MCP smoke' });
   assert(mcp.task.id, 'mcp tool should create task');
 

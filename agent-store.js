@@ -53,8 +53,15 @@ export function createMemoryAgentStore({ outputMaxChars = 12000 } = {}) {
         taskId: task.id,
         userId: task.userId,
         prUrl: '',
+        prNumber: null,
+        branch: '',
+        commitSha: '',
         ciStatus: 'unknown',
+        ciUrl: '',
+        previewUrl: '',
+        deploymentUrl: '',
         deploymentStatus: 'none',
+        deliveryStatus: 'none',
         summary: '',
         updatedAt: timestamp
       });
