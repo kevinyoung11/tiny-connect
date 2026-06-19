@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  createSupabaseAgentStore,
   getDatabaseUrl,
   getSupabaseConfigStatus,
   initializeSupabaseSchema,
@@ -48,6 +49,19 @@ test('initializes Supabase tables, indexes, and permissive RLS policies', async 
   assert.match(pool.sql(), /CREATE TABLE IF NOT EXISTS tiny_connect_user_settings/);
   assert.match(pool.sql(), /CREATE TABLE IF NOT EXISTS connection_logs/);
   assert.match(pool.sql(), /CREATE TABLE IF NOT EXISTS agent_tasks/);
+  assert.match(pool.sql(), /runner_pid\s+INTEGER/);
+  assert.match(pool.sql(), /runner_command\s+TEXT NOT NULL DEFAULT ''/);
+  assert.match(pool.sql(), /exit_code\s+INTEGER/);
+  assert.match(pool.sql(), /error\s+TEXT NOT NULL DEFAULT ''/);
+  assert.match(pool.sql(), /branch\s+TEXT NOT NULL DEFAULT ''/);
+  assert.match(pool.sql(), /pr_url\s+TEXT NOT NULL DEFAULT ''/);
+  assert.match(pool.sql(), /ci_status\s+TEXT NOT NULL DEFAULT 'unknown'/);
+  assert.match(pool.sql(), /delivery_status\s+TEXT NOT NULL DEFAULT 'none'/);
+  assert.match(pool.sql(), /ALTER TABLE agent_tasks ADD COLUMN IF NOT EXISTS runner_pid INTEGER/);
+  assert.match(pool.sql(), /ALTER TABLE agent_tasks ADD COLUMN IF NOT EXISTS runner_command TEXT NOT NULL DEFAULT ''/);
+  assert.match(pool.sql(), /ALTER TABLE agent_tasks ADD COLUMN IF NOT EXISTS exit_code INTEGER/);
+  assert.match(pool.sql(), /ALTER TABLE agent_tasks ADD COLUMN IF NOT EXISTS error TEXT NOT NULL DEFAULT ''/);
+  assert.match(pool.sql(), /ALTER TABLE agent_tasks ADD COLUMN IF NOT EXISTS delivery_status TEXT NOT NULL DEFAULT 'none'/);
   assert.match(pool.sql(), /CREATE TABLE IF NOT EXISTS agent_approvals/);
   assert.match(pool.sql(), /ALTER TABLE agent_approvals ADD COLUMN IF NOT EXISTS metadata JSONB NOT NULL DEFAULT '\{\}'::jsonb/);
   assert.match(pool.sql(), /CREATE TABLE IF NOT EXISTS agent_delivery/);
@@ -79,6 +93,60 @@ test('resolves local key cache paths under the owning user id', () => {
   assert.notEqual(pathA, pathB);
 });
 
+test('supabase agent store persists lifecycle fields as task columns', async () => {
+  const fake = createFakeSupabaseClient();
+  const store = createSupabaseAgentStore({ supabase: fake });
+
+  const task = await store.createTask({
+    id: 'task_1',
+    userId: 'user_1',
+    title: 'Codex lifecycle',
+    kind: 'codex',
+    prompt: 'work',
+    status: 'running',
+    riskLevel: 'safe',
+    tmuxSession: 'tc-codex-1',
+    runnerPid: 123,
+    runnerCommand: 'tmux',
+    branch: 'agent/task-1',
+    prUrl: 'https://github.test/repo/pull/1',
+    ciStatus: 'pending',
+    deliveryStatus: 'open',
+    metadata: { keep: true }
+  });
+
+  const updated = await store.updateTask({
+    userId: 'user_1',
+    taskId: task.id,
+    patch: {
+      status: 'failed',
+      exitCode: 2,
+      error: 'codex failed'
+    }
+  });
+
+  assert.equal(fake.tables.agent_tasks.rows[0].runner_pid, 123);
+  assert.equal(fake.tables.agent_tasks.rows[0].runner_command, 'tmux');
+  assert.equal(fake.tables.agent_tasks.rows[0].branch, 'agent/task-1');
+  assert.equal(fake.tables.agent_tasks.rows[0].pr_url, 'https://github.test/repo/pull/1');
+  assert.equal(fake.tables.agent_tasks.rows[0].ci_status, 'pending');
+  assert.equal(fake.tables.agent_tasks.rows[0].delivery_status, 'open');
+  assert.equal(fake.tables.agent_tasks.rows[0].metadata.keep, true);
+  assert.equal(fake.tables.agent_tasks.rows[0].exit_code, 2);
+  assert.equal(fake.tables.agent_tasks.rows[0].error, 'codex failed');
+  assert.deepEqual(fake.tables.agent_tasks.updates[0].patch, {
+    status: 'failed',
+    exit_code: 2,
+    error: 'codex failed',
+    updated_at: fake.tables.agent_tasks.updates[0].patch.updated_at
+  });
+  assert.equal(updated.runnerPid, 123);
+  assert.equal(updated.runnerCommand, 'tmux');
+  assert.equal(updated.exitCode, 2);
+  assert.equal(updated.error, 'codex failed');
+  assert.deepEqual(updated.metadata, { keep: true });
+});
+
 function createMockPool() {
   const calls = [];
   return {
@@ -90,6 +158,74 @@ function createMockPool() {
       return calls.map((call) => call.sql).join('\n');
     }
   };
+}
+
+function createFakeSupabaseClient() {
+  const tables = {
+    agent_tasks: { rows: [], updates: [] },
+    agent_delivery: { rows: [], updates: [] }
+  };
+
+  return {
+    tables,
+    from(name) {
+      tables[name] ||= { rows: [], updates: [] };
+      return createFakeQuery(tables[name]);
+    }
+  };
+}
+
+function createFakeQuery(table) {
+  const state = {
+    filters: [],
+    selected: false,
+    single: false,
+    operation: null,
+    payload: null
+  };
+  const query = {
+    insert(row) {
+      table.rows.push(structuredClone(row));
+      state.operation = 'insert';
+      state.payload = row;
+      return Promise.resolve({ error: null, data: [row] });
+    },
+    upsert(row) {
+      const existing = table.rows.find((item) => item.task_id === row.task_id);
+      if (existing) Object.assign(existing, structuredClone(row));
+      else table.rows.push(structuredClone(row));
+      state.operation = 'upsert';
+      state.payload = row;
+      return Promise.resolve({ error: null, data: [row] });
+    },
+    update(patch) {
+      state.operation = 'update';
+      state.payload = patch;
+      table.updates.push({ patch: structuredClone(patch), filters: state.filters });
+      return query;
+    },
+    select() {
+      state.selected = true;
+      return query;
+    },
+    eq(column, value) {
+      state.filters.push({ column, value });
+      return query;
+    },
+    order() {
+      return query;
+    },
+    maybeSingle() {
+      const row = table.rows.find((item) => state.filters.every((filter) => item[filter.column] === filter.value));
+      if (row && state.operation === 'update') Object.assign(row, structuredClone(state.payload));
+      return Promise.resolve({ error: null, data: row ? structuredClone(row) : null });
+    },
+    then(resolve, reject) {
+      const rows = table.rows.filter((item) => state.filters.every((filter) => item[filter.column] === filter.value));
+      return Promise.resolve({ error: null, data: structuredClone(rows) }).then(resolve, reject);
+    }
+  };
+  return query;
 }
 
 function snapshotEnv() {

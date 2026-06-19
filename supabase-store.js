@@ -142,14 +142,30 @@ export async function initializeSupabaseSchema(pool) {
       status          TEXT NOT NULL DEFAULT 'queued',
       risk_level      TEXT NOT NULL DEFAULT 'safe',
       tmux_session    TEXT,
+      runner_pid      INTEGER,
+      runner_command  TEXT NOT NULL DEFAULT '',
+      exit_code       INTEGER,
+      error           TEXT NOT NULL DEFAULT '',
       model           TEXT,
       project_path    TEXT,
+      branch          TEXT NOT NULL DEFAULT '',
+      pr_url          TEXT NOT NULL DEFAULT '',
+      ci_status       TEXT NOT NULL DEFAULT 'unknown',
+      delivery_status TEXT NOT NULL DEFAULT 'none',
       output_tail     TEXT NOT NULL DEFAULT '',
       metadata        JSONB NOT NULL DEFAULT '{}'::jsonb,
       created_at      TIMESTAMPTZ DEFAULT NOW(),
       updated_at      TIMESTAMPTZ DEFAULT NOW()
     )
   `);
+  await pool.query(`ALTER TABLE agent_tasks ADD COLUMN IF NOT EXISTS runner_pid INTEGER`);
+  await pool.query(`ALTER TABLE agent_tasks ADD COLUMN IF NOT EXISTS runner_command TEXT NOT NULL DEFAULT ''`);
+  await pool.query(`ALTER TABLE agent_tasks ADD COLUMN IF NOT EXISTS exit_code INTEGER`);
+  await pool.query(`ALTER TABLE agent_tasks ADD COLUMN IF NOT EXISTS error TEXT NOT NULL DEFAULT ''`);
+  await pool.query(`ALTER TABLE agent_tasks ADD COLUMN IF NOT EXISTS branch TEXT NOT NULL DEFAULT ''`);
+  await pool.query(`ALTER TABLE agent_tasks ADD COLUMN IF NOT EXISTS pr_url TEXT NOT NULL DEFAULT ''`);
+  await pool.query(`ALTER TABLE agent_tasks ADD COLUMN IF NOT EXISTS ci_status TEXT NOT NULL DEFAULT 'unknown'`);
+  await pool.query(`ALTER TABLE agent_tasks ADD COLUMN IF NOT EXISTS delivery_status TEXT NOT NULL DEFAULT 'none'`);
   await pool.query(`
     CREATE TABLE IF NOT EXISTS agent_approvals (
       id           TEXT PRIMARY KEY,
@@ -616,7 +632,8 @@ export function createSupabaseActivityStore() {
   };
 }
 
-export function createSupabaseAgentStore() {
+export function createSupabaseAgentStore({ supabase } = {}) {
+  const client = () => supabase || sb();
   return {
     async init() {
       await ensureTables();
@@ -632,18 +649,26 @@ export function createSupabaseAgentStore() {
         status: sanitizeLogText(input.status || 'queued', 40),
         risk_level: sanitizeLogText(input.riskLevel || 'safe', 24),
         tmux_session: sanitizeLogText(input.tmuxSession || '', 120),
+        runner_pid: Number.isFinite(Number(input.runnerPid)) ? Number(input.runnerPid) : null,
+        runner_command: sanitizeLogText(input.runnerCommand || '', 500),
+        exit_code: Number.isFinite(Number(input.exitCode)) ? Number(input.exitCode) : null,
+        error: sanitizeLogText(input.error || '', 1000),
         model: sanitizeLogText(input.model || '', 120),
         project_path: sanitizeLogText(input.projectPath || '', 500),
+        branch: sanitizeLogText(input.branch || '', 300),
+        pr_url: sanitizeLogText(input.prUrl || '', 1000),
+        ci_status: sanitizeLogText(input.ciStatus || 'unknown', 40),
+        delivery_status: sanitizeLogText(input.deliveryStatus || 'none', 40),
         output_tail: sanitizeLogText(input.outputTail || '', 12000),
         metadata: sanitizeLogMeta(input.metadata || {})
       };
-      await sbCheck(await sb().from('agent_tasks').insert(row), 'insert agent_tasks');
+      await sbCheck(await client().from('agent_tasks').insert(row), 'insert agent_tasks');
       await this.updateDelivery({ userId: row.user_id, taskId: row.id, patch: {} });
       return toAgentTask(row);
     },
 
     async listTasks({ userId }) {
-      const result = await sb().from('agent_tasks')
+      const result = await client().from('agent_tasks')
         .select('*')
         .eq('user_id', requireUserId({ userId }))
         .order('created_at', { ascending: false });
@@ -652,7 +677,7 @@ export function createSupabaseAgentStore() {
     },
 
     async getTask({ userId, taskId }) {
-      const result = await sb().from('agent_tasks')
+      const result = await client().from('agent_tasks')
         .select('*')
         .eq('user_id', requireUserId({ userId }))
         .eq('id', taskId)
@@ -665,7 +690,7 @@ export function createSupabaseAgentStore() {
     async updateTask({ userId, taskId, patch }) {
       const row = agentTaskPatch(patch || {});
       row.updated_at = new Date().toISOString();
-      const result = await sb().from('agent_tasks')
+      const result = await client().from('agent_tasks')
         .update(row)
         .eq('user_id', requireUserId({ userId }))
         .eq('id', taskId)
@@ -701,12 +726,12 @@ export function createSupabaseAgentStore() {
         diff_summary: sanitizeLogText(input.diffSummary || '', 4000),
         metadata: sanitizeLogMeta(input.metadata || {})
       };
-      await sbCheck(await sb().from('agent_approvals').insert(row), 'insert agent_approvals');
+      await sbCheck(await client().from('agent_approvals').insert(row), 'insert agent_approvals');
       return toAgentApproval(row);
     },
 
     async listApprovals({ userId, status } = {}) {
-      let query = sb().from('agent_approvals')
+      let query = client().from('agent_approvals')
         .select('*')
         .eq('user_id', requireUserId({ userId }))
         .order('requested_at', { ascending: false });
@@ -717,7 +742,7 @@ export function createSupabaseAgentStore() {
     },
 
     async getApproval({ userId, approvalId }) {
-      const result = await sb().from('agent_approvals')
+      const result = await client().from('agent_approvals')
         .select('*')
         .eq('user_id', requireUserId({ userId }))
         .eq('id', approvalId)
@@ -728,7 +753,7 @@ export function createSupabaseAgentStore() {
     },
 
     async resolveApproval({ userId, approvalId, status }) {
-      const result = await sb().from('agent_approvals')
+      const result = await client().from('agent_approvals')
         .update({ status, resolved_at: new Date().toISOString() })
         .eq('user_id', requireUserId({ userId }))
         .eq('id', approvalId)
@@ -740,7 +765,7 @@ export function createSupabaseAgentStore() {
     },
 
     async getDelivery({ userId, taskId }) {
-      const result = await sb().from('agent_delivery')
+      const result = await client().from('agent_delivery')
         .select('*')
         .eq('user_id', requireUserId({ userId }))
         .eq('task_id', taskId)
@@ -769,7 +794,7 @@ export function createSupabaseAgentStore() {
         updated_at: new Date().toISOString()
       };
       await sbCheck(
-        await sb().from('agent_delivery').upsert(row, { onConflict: 'task_id' }),
+        await client().from('agent_delivery').upsert(row, { onConflict: 'task_id' }),
         'upsert agent_delivery'
       );
       return this.getDelivery({ userId, taskId });
@@ -784,12 +809,12 @@ export function createSupabaseAgentStore() {
         message: sanitizeLogText(message, 1000),
         meta: sanitizeLogMeta(meta)
       };
-      await sbCheck(await sb().from('agent_audit_logs').insert(row), 'insert agent_audit_logs');
+      await sbCheck(await client().from('agent_audit_logs').insert(row), 'insert agent_audit_logs');
       return toAgentAudit(row);
     },
 
     async listAuditLogs({ userId, taskId } = {}) {
-      let query = sb().from('agent_audit_logs')
+      let query = client().from('agent_audit_logs')
         .select('*')
         .eq('user_id', requireUserId({ userId }))
         .order('created_at', { ascending: false });
@@ -811,8 +836,16 @@ function toAgentTask(row) {
     status: row.status,
     riskLevel: row.risk_level,
     tmuxSession: row.tmux_session || '',
+    runnerPid: row.runner_pid ?? row.metadata?.runnerPid ?? null,
+    runnerCommand: row.runner_command || row.metadata?.runnerCommand || '',
+    exitCode: row.exit_code ?? row.metadata?.exitCode,
+    error: row.error || row.metadata?.error || '',
     model: row.model || '',
     projectPath: row.project_path || '',
+    branch: row.branch || '',
+    prUrl: row.pr_url || '',
+    ciStatus: row.ci_status || 'unknown',
+    deliveryStatus: row.delivery_status || 'none',
     outputTail: row.output_tail || '',
     metadata: row.metadata || {},
     createdAt: row.created_at,
@@ -826,9 +859,15 @@ function agentTaskPatch(patch) {
   if ('riskLevel' in patch) row.risk_level = sanitizeLogText(patch.riskLevel, 24);
   if ('tmuxSession' in patch) row.tmux_session = sanitizeLogText(patch.tmuxSession, 120);
   if ('outputTail' in patch) row.output_tail = sanitizeLogText(patch.outputTail, 12000);
-  if ('runnerCommand' in patch) row.metadata = sanitizeLogMeta({ runnerCommand: patch.runnerCommand });
-  if ('error' in patch) row.metadata = sanitizeLogMeta({ error: patch.error });
-  if ('exitCode' in patch) row.metadata = sanitizeLogMeta({ exitCode: patch.exitCode });
+  if ('runnerPid' in patch) row.runner_pid = Number.isFinite(Number(patch.runnerPid)) ? Number(patch.runnerPid) : null;
+  if ('runnerCommand' in patch) row.runner_command = sanitizeLogText(patch.runnerCommand, 500);
+  if ('error' in patch) row.error = sanitizeLogText(patch.error, 1000);
+  if ('exitCode' in patch) row.exit_code = Number.isFinite(Number(patch.exitCode)) ? Number(patch.exitCode) : null;
+  if ('branch' in patch) row.branch = sanitizeLogText(patch.branch, 300);
+  if ('prUrl' in patch) row.pr_url = sanitizeLogText(patch.prUrl, 1000);
+  if ('ciStatus' in patch) row.ci_status = sanitizeLogText(patch.ciStatus, 40);
+  if ('deliveryStatus' in patch) row.delivery_status = sanitizeLogText(patch.deliveryStatus, 40);
+  if ('metadata' in patch) row.metadata = sanitizeLogMeta(patch.metadata || {});
   return row;
 }
 
