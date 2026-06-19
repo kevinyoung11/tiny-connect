@@ -18,6 +18,15 @@ test('server module imports without Supabase environment variables', async () =>
   }
 });
 
+test('server mounts agent routes behind schema initialization middleware', async () => {
+  const source = await import('node:fs/promises').then((fs) => fs.readFile('server.js', 'utf8'));
+
+  assert.match(source, /app\.use\('\/api\/agent', ensureStoresReady, createAgentRouter/);
+  assert.match(source, /app\.use\('\/api\/mcp\/tools', ensureStoresReady, createAgentRouter/);
+  assert.match(source, /async function ensureStoresReady\(req, res, next\)/);
+  assert.match(source, /Supabase schema is not initialized/);
+});
+
 function snapshotEnv() {
   return {
     SUPABASE_URL: process.env.SUPABASE_URL,

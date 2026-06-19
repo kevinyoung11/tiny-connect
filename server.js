@@ -40,6 +40,7 @@ const userStore = createSupabaseUserStore();
 const activityStore = createSupabaseActivityStore();
 const agentStore = supabaseConfigured ? createSupabaseAgentStore() : createMemoryAgentStore();
 const agentRunner = createAgentRunner({ store: agentStore });
+let storesReadyPromise = null;
 
 // sessionId → { client, config, stream, ws, cleanupTimer, settings }
 const sshSessions = new Map();
@@ -58,8 +59,8 @@ app.get('/healthz', (req, res) => {
   });
 });
 
-app.use('/api/agent', createAgentRouter({ store: agentStore, runner: agentRunner, getScope: getRequestScope }));
-app.use('/api/mcp/tools', createAgentRouter({ store: agentStore, runner: agentRunner, getScope: getRequestScope, mcpOnly: true }));
+app.use('/api/agent', ensureStoresReady, createAgentRouter({ store: agentStore, runner: agentRunner, getScope: getRequestScope }));
+app.use('/api/mcp/tools', ensureStoresReady, createAgentRouter({ store: agentStore, runner: agentRunner, getScope: getRequestScope, mcpOnly: true }));
 
 app.use('/api', requireSupabaseConfig);
 
@@ -71,6 +72,21 @@ function requireSupabaseConfig(req, res, next) {
   res.status(503).json({
     error: 'Supabase is not configured. Set SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, and Direct_Link/DIRECT_URL/DATABASE_URL.'
   });
+}
+
+async function ensureStoresReady(req, res, next) {
+  if (!supabaseConfigured) {
+    next();
+    return;
+  }
+  try {
+    await initStores();
+    next();
+  } catch (error) {
+    res.status(503).json({
+      error: `Supabase schema is not initialized: ${error.message}`
+    });
+  }
 }
 
 /* ── SSH Key endpoints ─────────────────────────────────────────────────────── */
@@ -641,7 +657,7 @@ if (!process.env.VERCEL) {
 
 async function startServer() {
   if (supabaseConfigured) {
-    await Promise.all([keyStore.init(), profileStore.init(), userStore.init(), activityStore.init(), agentStore.init()]);
+    await initStores();
     console.log('[supabase] configured; stores initialized');
   } else {
     console.warn('[supabase] not configured; /api and SSH WebSocket connections will return configuration errors');
@@ -657,4 +673,15 @@ async function startServer() {
     for (const address of addresses) console.log(`LAN: ${address}`);
     if (startupCommand) console.log(`Startup command: ${startupCommand}`);
   });
+}
+
+function initStores() {
+  storesReadyPromise ||= Promise.all([
+    keyStore.init(),
+    profileStore.init(),
+    userStore.init(),
+    activityStore.init(),
+    agentStore.init()
+  ]);
+  return storesReadyPromise;
 }

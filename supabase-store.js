@@ -53,16 +53,12 @@ export function resolveScopedKeyPath(localDir, userId, keyId) {
 
 const _readyPools = new WeakSet();
 let _schemaWarningPrinted = false;
-async function ensureTables() {
-  const pool = getPgPool();
+async function ensureTables(pool = getPgPool()) {
   if (!pool) return;
   try {
     await initializeSupabaseSchema(pool);
   } catch (error) {
-    if (!_schemaWarningPrinted) {
-      console.warn(`[supabase-store] schema init skipped: ${error.message}`);
-      _schemaWarningPrinted = true;
-    }
+    throw new Error(`Supabase schema initialization failed: ${error.message}`);
   }
 }
 
@@ -632,11 +628,11 @@ export function createSupabaseActivityStore() {
   };
 }
 
-export function createSupabaseAgentStore({ supabase } = {}) {
+export function createSupabaseAgentStore({ supabase, pool } = {}) {
   const client = () => supabase || sb();
   return {
     async init() {
-      await ensureTables();
+      await ensureTables(pool);
     },
 
     async createTask(input) {

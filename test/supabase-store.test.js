@@ -84,6 +84,22 @@ test('initializes Supabase tables, indexes, and permissive RLS policies', async 
   assert.match(pool.sql(), /CREATE POLICY "agent_tasks_client_select" ON agent_tasks FOR SELECT TO anon, authenticated USING \(true\)/);
 });
 
+test('supabase agent store init fails when schema initialization fails', async () => {
+  const store = createSupabaseAgentStore({
+    supabase: createFakeSupabaseClient(),
+    pool: {
+      async query() {
+        throw new Error('permission denied for schema public');
+      }
+    }
+  });
+
+  await assert.rejects(
+    () => store.init(),
+    /Supabase schema initialization failed: permission denied for schema public/
+  );
+});
+
 test('resolves local key cache paths under the owning user id', () => {
   const pathA = resolveScopedKeyPath('/tmp/tiny-connect-keys', 'user_a', 'key_prod');
   const pathB = resolveScopedKeyPath('/tmp/tiny-connect-keys', 'user_b', 'key_prod');
