@@ -53,6 +53,7 @@ export function createAgentRunner({ store, spawnImpl = spawn } = {}) {
     if (isTmuxBacked(task)) {
       const send = spawnImpl('tmux', ['send-keys', '-t', task.tmuxSession, text, 'Enter'], { env: process.env });
       processes.set(`${taskId}:input:${Date.now()}`, send);
+      await waitForChildExit(send, 'tmux send-keys');
     } else if (child?.stdin?.write) {
       child.stdin.write(text);
     } else {
@@ -85,6 +86,18 @@ export function createAgentRunner({ store, spawnImpl = spawn } = {}) {
     await store.updateTask({ userId, taskId, patch: { status: 'cancelled' } });
     await store.logAudit?.({ userId, taskId, event: 'task_cancelled', message: 'cancel requested' });
     return { ok: true };
+  }
+
+  function waitForChildExit(child, label) {
+    return new Promise((resolve, reject) => {
+      let errorOutput = '';
+      child.stderr?.on('data', (chunk) => { errorOutput += chunk.toString('utf8'); });
+      child.on('error', reject);
+      child.on('exit', (code) => {
+        if (code === 0) resolve();
+        else reject(new Error(errorOutput || `${label} exited ${code}`));
+      });
+    });
   }
 
   function captureTmuxPane(tmuxSession, lines) {

@@ -33,6 +33,10 @@ export function createAgentRouter({ store, runner, getScope, mcpOnly = false } =
       await runner.sendInput({ ...scope, taskId: req.body?.taskId, input: req.body?.input || '' });
       res.json({ ok: true });
     }));
+    router.post('/request_agent_approval', asyncHandler(async (req, res) => {
+      const result = await requestTaskApprovalFlow({ req, store, getScope, taskId: req.body?.taskId });
+      res.status(201).json(result);
+    }));
     return router;
   }
 
@@ -71,6 +75,11 @@ export function createAgentRouter({ store, runner, getScope, mcpOnly = false } =
     res.json({ ok: true });
   }));
 
+  router.post('/tasks/:id/approval-requests', asyncHandler(async (req, res) => {
+    const result = await requestTaskApprovalFlow({ req, store, getScope, taskId: req.params.id });
+    res.status(201).json(result);
+  }));
+
   router.post('/tasks/:id/cancel', asyncHandler(async (req, res) => {
     const scope = await getScope(req);
     await runner.cancelTask({ ...scope, taskId: req.params.id });
@@ -99,6 +108,26 @@ export function createAgentRouter({ store, runner, getScope, mcpOnly = false } =
   }));
 
   return router;
+}
+
+async function requestTaskApprovalFlow({ req, store, getScope, taskId }) {
+  const scope = await getScope(req);
+  const task = await store.getTask({ ...scope, taskId });
+  const command = String(req.body?.command || '').trim();
+  if (!command) throw new Error('command is required');
+  const riskLevel = classifyRisk(command);
+  const approval = await store.createApproval({
+    ...scope,
+    taskId: task.id,
+    riskLevel,
+    command,
+    reason: req.body?.reason || `${riskLevel} risk command requires mobile approval`,
+    diffSummary: req.body?.diffSummary || '',
+    metadata: { mode: 'command' }
+  });
+  await store.updateTask({ ...scope, taskId: task.id, patch: { status: 'waiting_approval' } });
+  await store.logAudit?.({ ...scope, taskId: task.id, event: 'approval_requested', message: command, meta: { mode: 'command' } });
+  return { approval, task: await store.getTask({ ...scope, taskId: task.id }) };
 }
 
 async function createTaskFlow({ req, store, runner, getScope }) {
@@ -139,10 +168,15 @@ async function resolveApprovalFlow({ req, store, runner, getScope, approvalId })
   const approval = await store.resolveApproval({ ...scope, approvalId, status });
   const task = await store.getTask({ ...scope, taskId: approval.taskId });
   if (status === 'approved') {
-    await store.updateTask({ ...scope, taskId: task.id, patch: { status: 'queued' } });
-    await runner.startTask({ ...scope, task: await store.getTask({ ...scope, taskId: task.id }) });
+    if (approval.metadata?.mode === 'command') {
+      await runner.sendInput({ ...scope, taskId: task.id, input: approval.command });
+      await store.updateTask({ ...scope, taskId: task.id, patch: { status: 'running' } });
+    } else {
+      await store.updateTask({ ...scope, taskId: task.id, patch: { status: 'queued' } });
+      await runner.startTask({ ...scope, task: await store.getTask({ ...scope, taskId: task.id }) });
+    }
   } else {
-    await store.updateTask({ ...scope, taskId: task.id, patch: { status: 'cancelled' } });
+    await store.updateTask({ ...scope, taskId: task.id, patch: { status: approval.metadata?.mode === 'command' ? 'running' : 'cancelled' } });
   }
   await store.logAudit?.({ ...scope, taskId: task.id, event: `approval_${status}`, message: approval.command });
   return { approval, task: await store.getTask({ ...scope, taskId: task.id }) };

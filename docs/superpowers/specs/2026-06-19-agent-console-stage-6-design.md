@@ -152,6 +152,9 @@ Per task delivery record:
 - `POST /api/agent/tasks/:id/input`
   Sends input to a running task.
 
+- `POST /api/agent/tasks/:id/approval-requests`
+  Creates a pending approval for a command/action requested by a running task. This is the adapter boundary for Codex/Claude hooks or wrapper scripts; approving sends the command back to the task input stream, rejecting resumes the task without sending it.
+
 - `POST /api/agent/tasks/:id/cancel`
   Cancels the task. First version sends SIGINT/SIGTERM to local runner.
 
@@ -175,6 +178,7 @@ Under `/api/mcp/tools/*`, expose JSON endpoints:
 - `create_agent_task`
 - `get_agent_task`
 - `send_agent_input`
+- `request_agent_approval`
 - `list_pending_approvals`
 - `resolve_approval`
 
@@ -210,6 +214,9 @@ The first version has command/action approval at API level:
 - high-risk task kinds or prompts create a pending approval before runner start;
 - approving starts or resumes the runner;
 - rejecting marks task cancelled.
+- running tasks can request command approval through REST or MCP;
+- approving a running command sends the approved command into the task session;
+- rejecting a running command resumes the task without sending the command.
 
 Risk classifier rules:
 
@@ -218,7 +225,7 @@ Risk classifier rules:
 - `high`: push, merge, deploy, delete files.
 - `critical`: production database, secrets, destructive recursive delete.
 
-This is not claimed to be full shell interception. True Codex/Claude internal command approval requires a future runner adapter or hook integration.
+This is not claimed to be transparent shell interception inside arbitrary Codex/Claude internals. The implemented boundary is an explicit hook/adapter API that Codex/Claude wrappers can call before high-risk actions. Transparent interception still requires provider-specific hook integration.
 
 ## Frontend Design
 

@@ -49,6 +49,7 @@ test('initializes Supabase tables, indexes, and permissive RLS policies', async 
   assert.match(pool.sql(), /CREATE TABLE IF NOT EXISTS connection_logs/);
   assert.match(pool.sql(), /CREATE TABLE IF NOT EXISTS agent_tasks/);
   assert.match(pool.sql(), /CREATE TABLE IF NOT EXISTS agent_approvals/);
+  assert.match(pool.sql(), /ALTER TABLE agent_approvals ADD COLUMN IF NOT EXISTS metadata JSONB NOT NULL DEFAULT '\{\}'::jsonb/);
   assert.match(pool.sql(), /CREATE TABLE IF NOT EXISTS agent_delivery/);
   assert.match(pool.sql(), /CREATE TABLE IF NOT EXISTS agent_audit_logs/);
   assert.match(pool.sql(), /CREATE UNIQUE INDEX IF NOT EXISTS user_devices_fp_idx/);

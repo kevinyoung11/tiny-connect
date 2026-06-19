@@ -185,6 +185,75 @@ test('agent routes refresh tmux output through runner capture before returning d
   assert.equal(snapshot.body.tasks[0].outputTail, 'captured-pane-output');
 });
 
+test('agent routes create running command approvals and send approved commands to the task', async () => {
+  const store = createMemoryAgentStore();
+  const sent = [];
+  const app = createTestApp(store, {
+    async startTask({ userId, task }) {
+      await store.updateTask({ userId, taskId: task.id, patch: { status: 'running' } });
+    },
+    async sendInput(args) {
+      sent.push(args);
+    }
+  });
+  const created = await requestJson(app, '/api/agent/tasks', {
+    method: 'POST',
+    body: { kind: 'codex', prompt: 'work safely', title: 'Codex approval' }
+  });
+
+  const requested = await requestJson(app, `/api/agent/tasks/${created.body.task.id}/approval-requests`, {
+    method: 'POST',
+    body: {
+      command: 'git push origin main',
+      reason: 'Codex wants to publish branch',
+      diffSummary: '+ implementation'
+    }
+  });
+
+  assert.equal(requested.status, 201);
+  assert.equal(requested.body.approval.status, 'pending');
+  assert.equal(requested.body.approval.riskLevel, 'high');
+  assert.equal(requested.body.task.status, 'waiting_approval');
+
+  const approved = await requestJson(app, `/api/agent/approvals/${requested.body.approval.id}/resolve`, {
+    method: 'POST',
+    body: { status: 'approved' }
+  });
+
+  assert.equal(approved.body.task.status, 'running');
+  assert.equal(sent.length, 1);
+  assert.equal(sent[0].taskId, created.body.task.id);
+  assert.equal(sent[0].input, 'git push origin main');
+});
+
+test('mcp tool endpoint creates running command approvals', async () => {
+  const store = createMemoryAgentStore();
+  const app = createTestApp(store, {
+    async startTask({ userId, task }) {
+      await store.updateTask({ userId, taskId: task.id, patch: { status: 'running' } });
+    },
+    async sendInput() {}
+  });
+  const created = await requestJson(app, '/api/mcp/tools/create_agent_task', {
+    method: 'POST',
+    body: { kind: 'claude', prompt: 'work safely' }
+  });
+
+  const requested = await requestJson(app, '/api/mcp/tools/request_agent_approval', {
+    method: 'POST',
+    body: {
+      taskId: created.body.task.id,
+      command: 'deploy production',
+      reason: 'Claude wants to deploy',
+      diffSummary: 'release candidate'
+    }
+  });
+
+  assert.equal(requested.status, 201);
+  assert.equal(requested.body.approval.riskLevel, 'high');
+  assert.equal(requested.body.task.status, 'waiting_approval');
+});
+
 function createTestApp(store, runner) {
   const app = express();
   app.use(express.json());

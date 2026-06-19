@@ -108,6 +108,7 @@ export function createMemoryAgentStore({ outputMaxChars = 12000 } = {}) {
         command: input.command || '',
         reason: input.reason || '',
         diffSummary: input.diffSummary || '',
+        metadata: typeof input.metadata === 'object' && input.metadata ? input.metadata : {},
         requestedAt: timestamp,
         resolvedAt: null
       };

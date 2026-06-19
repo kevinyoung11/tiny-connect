@@ -1,4 +1,5 @@
 import { chmod, mkdtemp, writeFile } from 'node:fs/promises';
+import { readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -11,6 +12,7 @@ const headers = {
 
 const fakeBinDir = await installFakeTmux();
 process.env.PATH = `${fakeBinDir}:${process.env.PATH || ''}`;
+process.env.FAKE_TMUX_SEND_LOG = join(fakeBinDir, 'send.log');
 process.env.PORT = String(port);
 process.env.HOST = '127.0.0.1';
 
@@ -50,6 +52,17 @@ try {
   const codexOutput = await get(`/api/agent/tasks/${codex.task.id}/output`);
   assert(codexOutput.output.includes('fake-tmux-pane-ok'), 'codex output endpoint should capture tmux pane output');
   await post(`/api/agent/tasks/${codex.task.id}/input`, { input: 'continue' });
+
+  const commandApproval = await post(`/api/agent/tasks/${codex.task.id}/approval-requests`, {
+    command: 'git push origin main',
+    reason: 'Smoke command approval',
+    diffSummary: '+ smoke'
+  });
+  assert(commandApproval.task.status === 'waiting_approval', 'running command approval should pause task');
+  await post(`/api/agent/approvals/${commandApproval.approval.id}/resolve`, { status: 'approved' });
+  const sendLog = await readFile(process.env.FAKE_TMUX_SEND_LOG, 'utf8');
+  assert(sendLog.includes('git push origin main'), 'approved command should be sent to tmux session');
+
   await post(`/api/agent/tasks/${codex.task.id}/cancel`, {});
 
   console.log('agent smoke flow passed');
@@ -102,6 +115,7 @@ case "$1" in
     printf 'fake-tmux-pane-ok\\n'
     ;;
   send-keys)
+    printf '%s\\n' "$*" >> "$FAKE_TMUX_SEND_LOG"
     exit 0
     ;;
   kill-session)

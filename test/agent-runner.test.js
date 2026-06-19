@@ -138,12 +138,47 @@ test('agent runner sends input to tmux backed codex sessions', async () => {
   });
 
   await runner.startTask({ userId: 'user_1', task });
-  await runner.sendInput({ userId: 'user_1', taskId: task.id, input: 'continue this task' });
+  const sendPromise = runner.sendInput({ userId: 'user_1', taskId: task.id, input: 'continue this task' });
+  await flushAsyncHandlers();
 
   assert.deepEqual(spawned[1], {
     command: 'tmux',
     args: ['send-keys', '-t', 'tc-codex-input', 'continue this task', 'Enter']
   });
+  sendChild.emit('exit', 0);
+  await sendPromise;
+});
+
+test('agent runner waits for tmux send-keys to finish', async () => {
+  const store = createMemoryAgentStore();
+  const taskChild = createFakeChild();
+  const sendChild = createFakeChild();
+  const children = [taskChild, sendChild];
+  const runner = createAgentRunner({
+    store,
+    spawnImpl() {
+      return children.shift();
+    }
+  });
+  const task = await store.createTask({
+    userId: 'user_1',
+    title: 'Codex',
+    kind: 'codex',
+    prompt: 'start work',
+    status: 'queued',
+    riskLevel: 'safe',
+    tmuxSession: 'tc-codex-input-wait'
+  });
+
+  await runner.startTask({ userId: 'user_1', task });
+  const sent = runner.sendInput({ userId: 'user_1', taskId: task.id, input: 'continue this task' });
+  let finished = false;
+  sent.then(() => { finished = true; });
+  await flushAsyncHandlers();
+  assert.equal(finished, false);
+  sendChild.emit('exit', 0);
+  await sent;
+  assert.equal(finished, true);
 });
 
 test('agent runner kills tmux backed sessions when cancelled', async () => {

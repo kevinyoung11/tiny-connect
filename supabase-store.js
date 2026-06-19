@@ -160,10 +160,12 @@ export async function initializeSupabaseSchema(pool) {
       command      TEXT NOT NULL DEFAULT '',
       reason       TEXT NOT NULL DEFAULT '',
       diff_summary TEXT NOT NULL DEFAULT '',
+      metadata     JSONB NOT NULL DEFAULT '{}'::jsonb,
       requested_at TIMESTAMPTZ DEFAULT NOW(),
       resolved_at  TIMESTAMPTZ
     )
   `);
+  await pool.query(`ALTER TABLE agent_approvals ADD COLUMN IF NOT EXISTS metadata JSONB NOT NULL DEFAULT '{}'::jsonb`);
   await pool.query(`
     CREATE TABLE IF NOT EXISTS agent_delivery (
       task_id           TEXT PRIMARY KEY REFERENCES agent_tasks(id) ON DELETE CASCADE,
@@ -682,7 +684,8 @@ export function createSupabaseAgentStore() {
         risk_level: input.riskLevel || 'high',
         command: sanitizeLogText(input.command || '', 4000),
         reason: sanitizeLogText(input.reason || '', 1000),
-        diff_summary: sanitizeLogText(input.diffSummary || '', 4000)
+        diff_summary: sanitizeLogText(input.diffSummary || '', 4000),
+        metadata: sanitizeLogMeta(input.metadata || {})
       };
       await sbCheck(await sb().from('agent_approvals').insert(row), 'insert agent_approvals');
       return toAgentApproval(row);
@@ -805,6 +808,7 @@ function toAgentApproval(row) {
     command: row.command || '',
     reason: row.reason || '',
     diffSummary: row.diff_summary || '',
+    metadata: row.metadata || {},
     requestedAt: row.requested_at,
     resolvedAt: row.resolved_at || null
   };

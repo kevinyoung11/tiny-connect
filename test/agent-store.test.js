@@ -107,3 +107,27 @@ test('memory agent store replaces output tail without duplicating previous captu
 
   assert.equal((await store.getTask({ userId: 'user_1', taskId: task.id })).outputTail, 'new pane');
 });
+
+test('memory agent store preserves approval metadata', async () => {
+  const store = createMemoryAgentStore();
+  const task = await store.createTask({
+    userId: 'user_1',
+    title: 'Approval',
+    kind: 'codex',
+    prompt: 'work',
+    status: 'running',
+    riskLevel: 'safe'
+  });
+
+  const approval = await store.createApproval({
+    userId: 'user_1',
+    taskId: task.id,
+    riskLevel: 'high',
+    command: 'git push',
+    reason: 'publish',
+    metadata: { mode: 'command' }
+  });
+
+  assert.deepEqual(approval.metadata, { mode: 'command' });
+  assert.deepEqual((await store.resolveApproval({ userId: 'user_1', approvalId: approval.id, status: 'approved' })).metadata, { mode: 'command' });
+});
