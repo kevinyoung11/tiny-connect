@@ -227,6 +227,20 @@ Risk classifier rules:
 
 This is not claimed to be transparent shell interception inside arbitrary Codex/Claude internals. The implemented boundary is an explicit hook/adapter API that Codex/Claude wrappers can call before high-risk actions. Transparent interception still requires provider-specific hook integration.
 
+### Hook Adapter
+
+The repo includes `scripts/agent-approval-hook.js` and npm script `agent:approval-hook` as a local adapter for Codex/Claude wrappers:
+
+```bash
+npm run agent:approval-hook -- \
+  --base-url http://127.0.0.1:8787 \
+  --task-id task_... \
+  --command "git push origin main" \
+  --reason "Agent wants to publish the branch"
+```
+
+The hook creates a running command approval, polls `GET /api/agent/approvals/:id`, exits `0` when approved, exits non-zero when rejected or timed out, and can pass `--device-fingerprint` when the caller needs to bind to a specific TinyConnect device identity.
+
 ## Frontend Design
 
 Add a production Agent Console to the real app, not only `controller-demo.html`.

@@ -226,6 +226,34 @@ test('agent routes create running command approvals and send approved commands t
   assert.equal(sent[0].input, 'git push origin main');
 });
 
+test('agent routes return approval detail by id for hook polling', async () => {
+  const store = createMemoryAgentStore();
+  const app = createTestApp(store, {
+    async startTask({ userId, task }) {
+      await store.updateTask({ userId, taskId: task.id, patch: { status: 'running' } });
+    },
+    async sendInput() {}
+  });
+  const created = await requestJson(app, '/api/agent/tasks', {
+    method: 'POST',
+    body: { kind: 'codex', prompt: 'work safely', title: 'Codex approval' }
+  });
+  const requested = await requestJson(app, `/api/agent/tasks/${created.body.task.id}/approval-requests`, {
+    method: 'POST',
+    body: { command: 'git push origin main' }
+  });
+  await requestJson(app, `/api/agent/approvals/${requested.body.approval.id}/resolve`, {
+    method: 'POST',
+    body: { status: 'rejected' }
+  });
+
+  const detail = await requestJson(app, `/api/agent/approvals/${requested.body.approval.id}`);
+
+  assert.equal(detail.status, 200);
+  assert.equal(detail.body.approval.status, 'rejected');
+  assert.equal(detail.body.approval.command, 'git push origin main');
+});
+
 test('mcp tool endpoint creates running command approvals', async () => {
   const store = createMemoryAgentStore();
   const app = createTestApp(store, {

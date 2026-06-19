@@ -91,6 +91,11 @@ export function createAgentRouter({ store, runner, getScope, mcpOnly = false } =
     res.json({ approvals: await store.listApprovals({ ...scope, status: req.query.status || 'pending' }) });
   }));
 
+  router.get('/approvals/:id', asyncHandler(async (req, res) => {
+    const scope = await getScope(req);
+    res.json({ approval: await store.getApproval({ ...scope, approvalId: req.params.id }) });
+  }));
+
   router.post('/approvals/:id/resolve', asyncHandler(async (req, res) => {
     const result = await resolveApprovalFlow({ req, store, runner, getScope, approvalId: req.params.id });
     res.json(result);

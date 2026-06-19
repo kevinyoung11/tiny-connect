@@ -2,6 +2,7 @@ import { chmod, mkdtemp, writeFile } from 'node:fs/promises';
 import { readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { runApprovalHook } from './agent-approval-hook.js';
 
 const port = Number(process.env.SMOKE_PORT || 8796);
 const baseUrl = `http://127.0.0.1:${port}`;
@@ -63,6 +64,27 @@ try {
   const sendLog = await readFile(process.env.FAKE_TMUX_SEND_LOG, 'utf8');
   assert(sendLog.includes('git push origin main'), 'approved command should be sent to tmux session');
 
+  const hookRun = runApprovalHook({
+    argv: [
+      '--base-url', baseUrl,
+      '--task-id', codex.task.id,
+      '--command', 'deploy production',
+      '--reason', 'Smoke hook approval',
+      '--timeout-ms', '5000',
+      '--poll-ms', '50',
+      '--device-fingerprint', 'agent-smoke-device'
+    ]
+  });
+  await waitForPendingApproval(codex.task.id, async (approval) => {
+    if (approval.command === 'deploy production') {
+      await post(`/api/agent/approvals/${approval.id}/resolve`, { status: 'approved' });
+      return true;
+    }
+    return false;
+  });
+  const hookResult = await hookRun;
+  assert(hookResult.exitCode === 0, `approval hook should exit zero: ${hookResult.stderr}`);
+
   await post(`/api/agent/tasks/${codex.task.id}/cancel`, {});
 
   console.log('agent smoke flow passed');
@@ -77,6 +99,16 @@ async function waitForTask(taskId, predicate) {
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
   throw new Error(`Timed out waiting for task ${taskId}`);
+}
+
+async function waitForPendingApproval(taskId, predicate) {
+  for (let attempt = 0; attempt < 30; attempt += 1) {
+    const snapshot = await get('/api/agent/snapshot');
+    const approval = (snapshot.approvals || []).find((item) => item.taskId === taskId);
+    if (approval && await predicate(approval)) return approval;
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  throw new Error(`Timed out waiting for pending approval on ${taskId}`);
 }
 
 async function get(path) {

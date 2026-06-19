@@ -7,6 +7,7 @@
     "test": "node --test",
     "start": "node server.js",
     "dev": "node server.js",
+    "agent:approval-hook": "node scripts/agent-approval-hook.js",
     "smoke:agent": "node scripts/smoke-agent-flow.js"
   },
   "dependencies": {

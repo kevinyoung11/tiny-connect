@@ -702,6 +702,17 @@ export function createSupabaseAgentStore() {
       return (result.data || []).map(toAgentApproval);
     },
 
+    async getApproval({ userId, approvalId }) {
+      const result = await sb().from('agent_approvals')
+        .select('*')
+        .eq('user_id', requireUserId({ userId }))
+        .eq('id', approvalId)
+        .maybeSingle();
+      if (result.error) throw new Error(result.error.message);
+      if (!result.data) throw new Error('approval not found');
+      return toAgentApproval(result.data);
+    },
+
     async resolveApproval({ userId, approvalId, status }) {
       const result = await sb().from('agent_approvals')
         .update({ status, resolved_at: new Date().toISOString() })

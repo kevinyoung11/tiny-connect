@@ -124,6 +124,13 @@ export function createMemoryAgentStore({ outputMaxChars = 12000 } = {}) {
         .map(clone);
     },
 
+    async getApproval({ userId, approvalId }) {
+      assertUserId(userId);
+      const approval = approvals.get(approvalId);
+      if (!approval || approval.userId !== userId) throw new Error('approval not found');
+      return clone(approval);
+    },
+
     async resolveApproval({ userId, approvalId, status }) {
       assertUserId(userId);
       const approval = approvals.get(approvalId);

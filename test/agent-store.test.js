@@ -130,4 +130,5 @@ test('memory agent store preserves approval metadata', async () => {
 
   assert.deepEqual(approval.metadata, { mode: 'command' });
   assert.deepEqual((await store.resolveApproval({ userId: 'user_1', approvalId: approval.id, status: 'approved' })).metadata, { mode: 'command' });
+  assert.deepEqual((await store.getApproval({ userId: 'user_1', approvalId: approval.id })).metadata, { mode: 'command' });
 });
