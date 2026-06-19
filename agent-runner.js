@@ -35,6 +35,10 @@ export function createAgentRunner({ store, spawnImpl = spawn } = {}) {
         await store.logAudit?.({ userId, taskId: task.id, event: 'task_cancelled', message: `exit ${code}` });
         return;
       }
+      if (isTmuxBacked(task) && code === 0) {
+        await store.logAudit?.({ userId, taskId: task.id, event: 'tmux_session_started', message: task.tmuxSession || '' });
+        return;
+      }
       const status = code === 0 ? 'completed' : 'failed';
       await store.updateTask({ userId, taskId: task.id, patch: { status, exitCode: code } });
       await store.logAudit?.({ userId, taskId: task.id, event: status === 'completed' ? 'task_completed' : 'task_failed', message: `exit ${code}` });

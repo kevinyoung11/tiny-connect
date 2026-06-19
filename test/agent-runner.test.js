@@ -95,6 +95,54 @@ test('agent runner starts codex tasks inside a persistent tmux session', async (
   assert.equal(updated.runnerCommand, 'tmux');
 });
 
+test('agent runner keeps tmux backed tasks running when detached launcher exits', async () => {
+  const store = createMemoryAgentStore();
+  const child = createFakeChild();
+  const runner = createAgentRunner({ store, spawnImpl: () => child });
+  const task = await store.createTask({
+    userId: 'user_1',
+    title: 'Codex',
+    kind: 'codex',
+    prompt: 'fix mobile scroll',
+    status: 'queued',
+    riskLevel: 'safe',
+    tmuxSession: 'tc-codex-detached'
+  });
+
+  await runner.startTask({ userId: 'user_1', task });
+  child.emit('exit', 0);
+  await flushAsyncHandlers();
+
+  const updated = await store.getTask({ userId: 'user_1', taskId: task.id });
+  assert.equal(updated.status, 'running');
+  assert.equal(updated.exitCode, undefined);
+});
+
+test('agent runner fails tmux backed tasks when detached launcher fails', async () => {
+  const store = createMemoryAgentStore();
+  const child = createFakeChild();
+  const runner = createAgentRunner({ store, spawnImpl: () => child });
+  const task = await store.createTask({
+    userId: 'user_1',
+    title: 'Codex',
+    kind: 'codex',
+    prompt: 'fix mobile scroll',
+    status: 'queued',
+    riskLevel: 'safe',
+    tmuxSession: 'tc-codex-detached-fail'
+  });
+
+  await runner.startTask({ userId: 'user_1', task });
+  child.stderr.emit('data', Buffer.from('open terminal failed\n'));
+  child.emit('exit', 1);
+  await flushAsyncHandlers();
+
+  const updated = await store.getTask({ userId: 'user_1', taskId: task.id });
+  assert.equal(updated.status, 'failed');
+  assert.equal(updated.exitCode, 1);
+  assert.equal(updated.outputTail, 'open terminal failed\n');
+});
+
 test('agent runner sends input to a running process stdin', async () => {
   const store = createMemoryAgentStore();
   const child = createFakeChild();
