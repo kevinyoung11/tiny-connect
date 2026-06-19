@@ -18,7 +18,7 @@ export function createAgentRouter({ store, runner, getScope, mcpOnly = false } =
     }));
     router.post('/get_agent_task', asyncHandler(async (req, res) => {
       const scope = await getScope(req);
-      res.json(await taskDetail({ store, scope, taskId: req.body?.taskId }));
+      res.json(await taskDetail({ store, runner, scope, taskId: req.body?.taskId }));
     }));
     router.post('/list_pending_approvals', asyncHandler(async (req, res) => {
       const scope = await getScope(req);
@@ -43,7 +43,7 @@ export function createAgentRouter({ store, runner, getScope, mcpOnly = false } =
 
   router.get('/snapshot', asyncHandler(async (req, res) => {
     const scope = await getScope(req);
-    const tasks = await tasksWithDelivery({ store, scope });
+    const tasks = await tasksWithDelivery({ store, runner, scope });
     const approvals = await store.listApprovals({ ...scope, status: 'pending' });
     res.json({ tasks, approvals });
   }));
@@ -55,11 +55,12 @@ export function createAgentRouter({ store, runner, getScope, mcpOnly = false } =
 
   router.get('/tasks/:id', asyncHandler(async (req, res) => {
     const scope = await getScope(req);
-    res.json(await taskDetail({ store, scope, taskId: req.params.id }));
+    res.json(await taskDetail({ store, runner, scope, taskId: req.params.id }));
   }));
 
   router.get('/tasks/:id/output', asyncHandler(async (req, res) => {
     const scope = await getScope(req);
+    await refreshTaskOutput({ store, runner, scope, taskId: req.params.id });
     const task = await store.getTask({ ...scope, taskId: req.params.id });
     res.json({ output: task.outputTail || '' });
   }));
@@ -147,7 +148,8 @@ async function resolveApprovalFlow({ req, store, runner, getScope, approvalId })
   return { approval, task: await store.getTask({ ...scope, taskId: task.id }) };
 }
 
-async function taskDetail({ store, scope, taskId }) {
+async function taskDetail({ store, runner, scope, taskId }) {
+  await refreshTaskOutput({ store, runner, scope, taskId });
   const task = await store.getTask({ ...scope, taskId });
   const approvals = await store.listApprovals({ ...scope });
   const approval = approvals.find((item) => item.taskId === task.id && item.status === 'pending') || null;
@@ -155,12 +157,28 @@ async function taskDetail({ store, scope, taskId }) {
   return { task, approval, delivery };
 }
 
-async function tasksWithDelivery({ store, scope }) {
+async function tasksWithDelivery({ store, runner, scope }) {
   const tasks = await store.listTasks(scope);
-  return Promise.all(tasks.map(async (task) => ({
-    ...task,
-    delivery: await store.getDelivery({ ...scope, taskId: task.id })
-  })));
+  return Promise.all(tasks.map(async (task) => {
+    const refreshed = await refreshTaskOutput({ store, runner, scope, taskId: task.id });
+    return {
+      ...refreshed,
+      delivery: await store.getDelivery({ ...scope, taskId: task.id })
+    };
+  }));
+}
+
+async function refreshTaskOutput({ store, runner, scope, taskId }) {
+  const task = await store.getTask({ ...scope, taskId });
+  if (task.status !== 'running' || (task.kind !== 'codex' && task.kind !== 'claude') || typeof runner.captureOutput !== 'function') {
+    return task;
+  }
+  try {
+    await runner.captureOutput({ ...scope, taskId });
+    return await store.getTask({ ...scope, taskId });
+  } catch {
+    return task;
+  }
 }
 
 function asyncHandler(fn) {

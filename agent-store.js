@@ -86,6 +86,15 @@ export function createMemoryAgentStore({ outputMaxChars = 12000 } = {}) {
       return task.outputTail;
     },
 
+    async replaceOutput({ userId, taskId, output }) {
+      await getTask({ userId, taskId });
+      const task = tasks.get(taskId);
+      task.outputRing = createRingBuffer(outputMaxChars);
+      task.outputTail = appendOutput(task.outputRing, output);
+      task.updatedAt = now();
+      return task.outputTail;
+    },
+
     async createApproval(input) {
       assertUserId(input.userId);
       await getTask({ userId: input.userId, taskId: input.taskId });

@@ -667,6 +667,12 @@ export function createSupabaseAgentStore() {
       return next;
     },
 
+    async replaceOutput({ userId, taskId, output }) {
+      const next = String(output || '').slice(-12000);
+      await this.updateTask({ userId, taskId, patch: { outputTail: next } });
+      return next;
+    },
+
     async createApproval(input) {
       const row = {
         id: input.id || `approval_${randomUUID()}`,

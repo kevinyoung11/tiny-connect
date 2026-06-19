@@ -1,4 +1,6 @@
-import server from '../server.js';
+import { chmod, mkdtemp, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 const port = Number(process.env.SMOKE_PORT || 8796);
 const baseUrl = `http://127.0.0.1:${port}`;
@@ -7,7 +9,13 @@ const headers = {
   'x-device-fingerprint': 'agent-smoke-device'
 };
 
-await new Promise((resolve) => server.listen(port, '127.0.0.1', resolve));
+const fakeBinDir = await installFakeTmux();
+process.env.PATH = `${fakeBinDir}:${process.env.PATH || ''}`;
+process.env.PORT = String(port);
+process.env.HOST = '127.0.0.1';
+
+const { default: server } = await import('../server.js');
+if (!server.listening) await new Promise((resolve) => server.once('listening', resolve));
 
 try {
   const safe = await post('/api/agent/tasks', { kind: 'shell', prompt: 'printf agent-smoke-ok', title: 'Smoke safe task' });
@@ -35,6 +43,14 @@ try {
 
   const mcp = await post('/api/mcp/tools/create_agent_task', { kind: 'shell', prompt: 'printf mcp-ok', title: 'MCP smoke' });
   assert(mcp.task.id, 'mcp tool should create task');
+
+  const codex = await post('/api/agent/tasks', { kind: 'codex', prompt: 'inspect current task', title: 'Tmux capture smoke' });
+  const codexDetail = await get(`/api/agent/tasks/${codex.task.id}`);
+  assert(codexDetail.task.outputTail.includes('fake-tmux-pane-ok'), 'codex task detail should capture tmux pane output');
+  const codexOutput = await get(`/api/agent/tasks/${codex.task.id}/output`);
+  assert(codexOutput.output.includes('fake-tmux-pane-ok'), 'codex output endpoint should capture tmux pane output');
+  await post(`/api/agent/tasks/${codex.task.id}/input`, { input: 'continue' });
+  await post(`/api/agent/tasks/${codex.task.id}/cancel`, {});
 
   console.log('agent smoke flow passed');
 } finally {
@@ -72,4 +88,30 @@ async function readJson(response) {
 
 function assert(condition, message) {
   if (!condition) throw new Error(message);
+}
+
+async function installFakeTmux() {
+  const dir = await mkdtemp(join(tmpdir(), 'tiny-connect-fake-tmux-'));
+  const tmuxPath = join(dir, 'tmux');
+  await writeFile(tmuxPath, `#!/bin/sh
+case "$1" in
+  new-session)
+    sleep 3
+    ;;
+  capture-pane)
+    printf 'fake-tmux-pane-ok\\n'
+    ;;
+  send-keys)
+    exit 0
+    ;;
+  kill-session)
+    exit 0
+    ;;
+  *)
+    exit 0
+    ;;
+esac
+`);
+  await chmod(tmuxPath, 0o755);
+  return dir;
 }

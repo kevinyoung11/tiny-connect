@@ -179,6 +179,41 @@ test('agent runner kills tmux backed sessions when cancelled', async () => {
   assert.equal((await store.getTask({ userId: 'user_1', taskId: task.id })).status, 'cancelled');
 });
 
+test('agent runner captures tmux pane output after process map is gone', async () => {
+  const store = createMemoryAgentStore();
+  const captureChild = createFakeChild();
+  const spawned = [];
+  const runner = createAgentRunner({
+    store,
+    spawnImpl(command, args) {
+      spawned.push({ command, args });
+      return captureChild;
+    }
+  });
+  const task = await store.createTask({
+    userId: 'user_1',
+    title: 'Codex',
+    kind: 'codex',
+    prompt: 'continue work',
+    status: 'running',
+    riskLevel: 'safe',
+    tmuxSession: 'tc-codex-replay'
+  });
+
+  const capturePromise = runner.captureOutput({ userId: 'user_1', taskId: task.id });
+  await flushAsyncHandlers();
+  captureChild.stdout.emit('data', Buffer.from('line one\nline two\n'));
+  captureChild.emit('exit', 0);
+  const result = await capturePromise;
+
+  assert.deepEqual(spawned[0], {
+    command: 'tmux',
+    args: ['capture-pane', '-p', '-t', 'tc-codex-replay', '-S', '-2000']
+  });
+  assert.equal(result.output, 'line one\nline two\n');
+  assert.equal((await store.getTask({ userId: 'user_1', taskId: task.id })).outputTail, 'line one\nline two\n');
+});
+
 function createFakeChild() {
   const child = new EventEmitter();
   child.stdout = new EventEmitter();

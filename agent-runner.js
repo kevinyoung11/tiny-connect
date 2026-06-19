@@ -63,6 +63,17 @@ export function createAgentRunner({ store, spawnImpl = spawn } = {}) {
     return { ok: true };
   }
 
+  async function captureOutput({ userId, taskId, lines = 2000 }) {
+    if (!userId) throw new Error('userId is required');
+    const task = await store.getTask({ userId, taskId });
+    if (!isTmuxBacked(task)) return { output: task.outputTail || '' };
+
+    const output = await captureTmuxPane(task.tmuxSession, lines);
+    await replaceOutput({ userId, taskId, output });
+    await store.logAudit?.({ userId, taskId, event: 'output_captured', message: task.tmuxSession });
+    return { output };
+  }
+
   async function cancelTask({ userId, taskId }) {
     const task = await store.getTask({ userId, taskId });
     const child = processes.get(taskId);
@@ -76,7 +87,32 @@ export function createAgentRunner({ store, spawnImpl = spawn } = {}) {
     return { ok: true };
   }
 
-  return { startTask, sendInput, cancelTask };
+  function captureTmuxPane(tmuxSession, lines) {
+    return new Promise((resolve, reject) => {
+      const child = spawnImpl('tmux', ['capture-pane', '-p', '-t', tmuxSession, '-S', `-${Number(lines) || 2000}`], { env: process.env });
+      let output = '';
+      let errorOutput = '';
+      child.stdout?.on('data', (chunk) => { output += chunk.toString('utf8'); });
+      child.stderr?.on('data', (chunk) => { errorOutput += chunk.toString('utf8'); });
+      child.on('error', reject);
+      child.on('exit', (code) => {
+        if (code === 0) resolve(output);
+        else reject(new Error(errorOutput || `tmux capture-pane exited ${code}`));
+      });
+    });
+  }
+
+  async function replaceOutput({ userId, taskId, output }) {
+    if (typeof store.replaceOutput === 'function') {
+      return store.replaceOutput({ userId, taskId, output });
+    }
+    const latest = await store.getTask({ userId, taskId });
+    const previous = latest.outputTail || '';
+    await store.updateTask({ userId, taskId, patch: { outputTail: '' } });
+    await store.appendOutput({ userId, taskId, chunk: output || previous });
+  }
+
+  return { startTask, sendInput, captureOutput, cancelTask };
 }
 
 function buildStartCommand(task) {

@@ -89,3 +89,21 @@ test('memory agent store returns newest tasks first and limits output tail', asy
   assert.deepEqual((await store.listTasks({ userId: 'user_1' })).map((task) => task.id), [second.id, first.id]);
   assert.equal((await store.getTask({ userId: 'user_1', taskId: first.id })).outputTail, 'lo world');
 });
+
+test('memory agent store replaces output tail without duplicating previous capture', async () => {
+  const store = createMemoryAgentStore({ outputMaxChars: 20 });
+  const task = await store.createTask({
+    userId: 'user_1',
+    title: 'Replay',
+    kind: 'codex',
+    prompt: 'work',
+    status: 'running',
+    riskLevel: 'safe'
+  });
+
+  await store.appendOutput({ userId: 'user_1', taskId: task.id, chunk: 'old pane' });
+  await store.replaceOutput({ userId: 'user_1', taskId: task.id, output: 'new pane' });
+  await store.replaceOutput({ userId: 'user_1', taskId: task.id, output: 'new pane' });
+
+  assert.equal((await store.getTask({ userId: 'user_1', taskId: task.id })).outputTail, 'new pane');
+});

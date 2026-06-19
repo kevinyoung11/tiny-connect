@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import express from 'express';
+import { request as httpRequest } from 'node:http';
 import { createAgentRouter } from '../agent-routes.js';
 import { createMemoryAgentStore } from '../agent-store.js';
 
@@ -155,6 +156,35 @@ test('agent snapshot includes delivery state for each task', async () => {
   assert.equal(snapshot.body.tasks[0].delivery.ciStatus, 'passed');
 });
 
+test('agent routes refresh tmux output through runner capture before returning detail and snapshot', async () => {
+  const store = createMemoryAgentStore();
+  const captured = [];
+  const app = createTestApp(store, {
+    async startTask({ userId, task }) {
+      await store.updateTask({ userId, taskId: task.id, patch: { status: 'running' } });
+    },
+    async sendInput() {},
+    async captureOutput({ userId, taskId }) {
+      captured.push(taskId);
+      await store.replaceOutput({ userId, taskId, output: 'captured-pane-output' });
+      return { output: 'captured-pane-output' };
+    }
+  });
+  const created = await requestJson(app, '/api/agent/tasks', {
+    method: 'POST',
+    body: { kind: 'codex', prompt: 'work', title: 'Codex replay' }
+  });
+
+  const detail = await requestJson(app, `/api/agent/tasks/${created.body.task.id}`);
+  const output = await requestJson(app, `/api/agent/tasks/${created.body.task.id}/output`);
+  const snapshot = await requestJson(app, '/api/agent/snapshot');
+
+  assert.deepEqual(captured, [created.body.task.id, created.body.task.id, created.body.task.id]);
+  assert.equal(detail.body.task.outputTail, 'captured-pane-output');
+  assert.equal(output.body.output, 'captured-pane-output');
+  assert.equal(snapshot.body.tasks[0].outputTail, 'captured-pane-output');
+});
+
 function createTestApp(store, runner) {
   const app = express();
   app.use(express.json());
@@ -164,17 +194,43 @@ function createTestApp(store, runner) {
 }
 
 async function requestJson(app, path, options = {}) {
-  const server = app.listen(0);
+  const server = await new Promise((resolve) => {
+    const listening = app.listen(0, '127.0.0.1', () => resolve(listening));
+  });
   try {
     const { port } = server.address();
-    const response = await fetch(`http://127.0.0.1:${port}${path}`, {
-      method: options.method || 'GET',
-      headers: { 'Content-Type': 'application/json' },
-      body: options.body ? JSON.stringify(options.body) : undefined
-    });
-    const body = await response.json();
-    return { status: response.status, body };
+    return await requestJsonFromServer({ port, path, options });
   } finally {
     await new Promise((resolve) => server.close(resolve));
   }
+}
+
+function requestJsonFromServer({ port, path, options }) {
+  const body = options.body ? JSON.stringify(options.body) : '';
+  return new Promise((resolve, reject) => {
+    const req = httpRequest({
+      hostname: '127.0.0.1',
+      port,
+      path,
+      method: options.method || 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(body)
+      }
+    }, (res) => {
+      let raw = '';
+      res.setEncoding('utf8');
+      res.on('data', (chunk) => { raw += chunk; });
+      res.on('end', () => {
+        try {
+          resolve({ status: res.statusCode, body: raw ? JSON.parse(raw) : {} });
+        } catch (error) {
+          reject(new Error(`Failed to parse JSON response ${res.statusCode}: ${raw.slice(0, 80)}`, { cause: error }));
+        }
+      });
+    });
+    req.on('error', reject);
+    if (body) req.write(body);
+    req.end();
+  });
 }
