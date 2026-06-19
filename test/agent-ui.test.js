@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  cancelAgentTask,
   createAgentApi,
   fetchAgentSnapshot,
   resolveAgentApproval,
@@ -33,12 +34,14 @@ test('agent api fetches snapshot and posts task or approval actions', async () =
   await api.startTask({ kind: 'codex', prompt: 'fix bug' });
   await api.resolveApproval('approval_1', 'approved');
   await api.sendInput('task_1', 'continue\n');
+  await api.cancelTask('task_1');
 
   assert.deepEqual(calls.map((call) => [call.url, call.init.method || 'GET']), [
     ['/api/agent/snapshot', 'GET'],
     ['/api/agent/tasks', 'POST'],
     ['/api/agent/approvals/approval_1/resolve', 'POST'],
-    ['/api/agent/tasks/task_1/input', 'POST']
+    ['/api/agent/tasks/task_1/input', 'POST'],
+    ['/api/agent/tasks/task_1/cancel', 'POST']
   ]);
   assert.equal(calls[1].init.headers.get('Content-Type'), 'application/json');
   assert.equal(calls[1].init.body, JSON.stringify({ kind: 'codex', prompt: 'fix bug' }));
@@ -65,6 +68,7 @@ test('agent api exports default helpers backed by global fetch', async () => {
     await startAgentTask({ prompt: 'ship it' }, { withIdentity: (init = {}) => init });
     await resolveAgentApproval('approval_2', 'rejected', { withIdentity: (init = {}) => init });
     await sendAgentInput('task_2', 'continue', { withIdentity: (init = {}) => init });
+    await cancelAgentTask('task_2', { withIdentity: (init = {}) => init });
   } finally {
     globalThis.fetch = originalFetch;
   }
@@ -73,7 +77,8 @@ test('agent api exports default helpers backed by global fetch', async () => {
     '/api/agent/snapshot',
     '/api/agent/tasks',
     '/api/agent/approvals/approval_2/resolve',
-    '/api/agent/tasks/task_2/input'
+    '/api/agent/tasks/task_2/input',
+    '/api/agent/tasks/task_2/cancel'
   ]);
 });
 
@@ -101,6 +106,8 @@ test('renders agent task rows with status risk and selection metadata', () => {
     assert.equal(row.children[0].children[1].textContent, 'codex');
     assert.equal(row.children[1].children[0].textContent, 'running');
     assert.equal(row.children[1].children[1].textContent, 'safe');
+    assert.equal(row.children[2].dataset.taskAction, 'cancel');
+    assert.equal(row.children[2].dataset.taskId, 'task_1');
   });
 });
 
@@ -159,7 +166,15 @@ test('renders delivery cards for pull request and ci status', () => {
     renderAgentDelivery(root, {
       taskId: 'task_1',
       prUrl: 'https://example.test/pr/1',
+      prNumber: 1,
+      branch: 'agent/task-1',
+      commitSha: 'abc123456789',
       ciStatus: 'passed',
+      ciUrl: 'https://example.test/checks/1',
+      previewUrl: 'https://preview.test',
+      deploymentUrl: 'https://deploy.test',
+      deploymentStatus: 'deployed',
+      deliveryStatus: 'open',
       summary: 'Implemented UI slice'
     });
 
@@ -170,9 +185,12 @@ test('renders delivery cards for pull request and ci status', () => {
     assert.equal(card.children[0].children[0].textContent, 'Delivery');
     assert.equal(card.children[0].children[1].textContent, 'passed');
     assert.equal(card.children[1].textContent, 'Implemented UI slice');
-    assert.equal(card.children[2].tagName, 'A');
-    assert.equal(card.children[2].getAttribute('href'), 'https://example.test/pr/1');
-    assert.equal(card.children[2].textContent, 'Open pull request');
+    assert.equal(card.children[2].textContent, '#1 · agent/task-1 · abc1234');
+    assert.equal(card.children[3].textContent, 'open · deployed');
+    assert.equal(card.children[4].children[0].getAttribute('href'), 'https://example.test/pr/1');
+    assert.equal(card.children[4].children[1].getAttribute('href'), 'https://example.test/checks/1');
+    assert.equal(card.children[4].children[2].getAttribute('href'), 'https://preview.test');
+    assert.equal(card.children[4].children[3].getAttribute('href'), 'https://deploy.test');
   });
 });
 

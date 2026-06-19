@@ -1177,8 +1177,21 @@ label {
 }
 .agent-task-row {
   display: flex;
+  align-items: center;
   justify-content: space-between;
   gap: 10px;
+  cursor: pointer;
+}
+.agent-task-main { min-width: 0; }
+.agent-task-action {
+  flex: none;
+  min-height: 30px;
+  padding: 0 9px;
+  border: 1px solid rgba(255,95,87,.35);
+  border-radius: 7px;
+  background: rgba(255,95,87,.08);
+  color: var(--danger);
+  font-size: 11px;
   cursor: pointer;
 }
 .agent-task-row.is-selected {

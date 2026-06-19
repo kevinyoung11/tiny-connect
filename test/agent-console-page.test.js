@@ -6,6 +6,7 @@ import { resolve } from 'node:path';
 test('main page exposes agent console shell and module import', () => {
   const html = readFileSync(resolve('public/index.html'), 'utf8');
   const js = readFileSync(resolve('public/client.js'), 'utf8');
+  const agentConsole = readFileSync(resolve('public/agent-console.js'), 'utf8');
   const css = readFileSync(resolve('public/styles.css'), 'utf8');
 
   assert.match(html, /id="agentBtn"/);
@@ -19,5 +20,8 @@ test('main page exposes agent console shell and module import', () => {
   assert.match(html, /id="agentDelivery"/);
   assert.match(js, /import \{ initAgentConsole \} from '\.\/agent-console\.js';/);
   assert.match(js, /initAgentConsole\(/);
+  assert.match(agentConsole, /data-task-action/);
+  assert.match(agentConsole, /api\.cancelTask\(/);
   assert.match(css, /\.agent-sheet/);
+  assert.match(css, /\.agent-task-action/);
 });

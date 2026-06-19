@@ -68,6 +68,7 @@ function createTaskRow(task, selectedTaskId) {
 
   row.append(main);
   row.append(meta);
+  row.append(createTaskActionButton(task.id, 'cancel', 'Cancel'));
   return row;
 }
 
@@ -108,17 +109,58 @@ function createDeliveryCard(delivery) {
   card.append(header);
 
   card.append(createText('div', delivery.summary || '', 'agent-delivery-summary'));
+  card.append(createText('div', formatDeliveryMeta(delivery), 'agent-delivery-meta'));
+  card.append(createText('div', formatDeliveryStatus(delivery), 'agent-delivery-status'));
 
+  const links = document.createElement('div');
+  links.className = 'agent-delivery-links';
   const prUrl = delivery.prUrl || delivery.pr_url;
-  if (prUrl) {
-    const link = createText('a', 'Open pull request', 'agent-delivery-link');
-    link.setAttribute('href', prUrl);
-    link.setAttribute('target', '_blank');
-    link.setAttribute('rel', 'noopener noreferrer');
-    card.append(link);
-  }
+  const ciUrl = delivery.ciUrl || delivery.ci_url;
+  const previewUrl = delivery.previewUrl || delivery.preview_url;
+  const deploymentUrl = delivery.deploymentUrl || delivery.deployment_url;
+  if (prUrl) links.append(createDeliveryLink(prUrl, 'Pull request'));
+  if (ciUrl) links.append(createDeliveryLink(ciUrl, 'CI'));
+  if (previewUrl) links.append(createDeliveryLink(previewUrl, 'Preview'));
+  if (deploymentUrl) links.append(createDeliveryLink(deploymentUrl, 'Deploy'));
+  if (links.children.length) card.append(links);
 
   return card;
+}
+
+function createTaskActionButton(taskId, action, label) {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'agent-task-action';
+  button.dataset.taskId = taskId;
+  button.dataset.taskAction = action;
+  button.textContent = label;
+  return button;
+}
+
+function createDeliveryLink(url, label) {
+  const link = createText('a', label, 'agent-delivery-link');
+  link.setAttribute('href', url);
+  link.setAttribute('target', '_blank');
+  link.setAttribute('rel', 'noopener noreferrer');
+  return link;
+}
+
+function formatDeliveryMeta(delivery) {
+  const prNumber = delivery.prNumber || delivery.pr_number;
+  const branch = delivery.branch || '';
+  const commitSha = delivery.commitSha || delivery.commit_sha || '';
+  return [
+    prNumber ? `#${prNumber}` : '',
+    branch,
+    commitSha ? commitSha.slice(0, 7) : ''
+  ].filter(Boolean).join(' · ');
+}
+
+function formatDeliveryStatus(delivery) {
+  return [
+    delivery.deliveryStatus || delivery.delivery_status || '',
+    delivery.deploymentStatus || delivery.deployment_status || ''
+  ].filter(Boolean).join(' · ');
 }
 
 function createApprovalButton(approvalId, action, label) {

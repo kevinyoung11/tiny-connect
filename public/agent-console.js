@@ -54,7 +54,13 @@ export function initAgentConsole({ withIdentity = (init) => init, toast = () => 
 
   agentBtn.addEventListener('click', open);
   closeBtn?.addEventListener('click', close);
-  taskList?.addEventListener('click', (event) => {
+  taskList?.addEventListener('click', async (event) => {
+    const action = event.target.closest('[data-task-action]');
+    if (action?.dataset.taskAction === 'cancel') {
+      await api.cancelTask(action.dataset.taskId);
+      await refresh();
+      return;
+    }
     const row = event.target.closest('[data-task-id]');
     if (!row) return;
     selectedTaskId = row.dataset.taskId;
