@@ -4,6 +4,7 @@ import {
   createAgentApi,
   fetchAgentSnapshot,
   resolveAgentApproval,
+  sendAgentInput,
   startAgentTask
 } from '../public/agent-api.js';
 import {
@@ -31,16 +32,19 @@ test('agent api fetches snapshot and posts task or approval actions', async () =
   assert.deepEqual(await api.fetchSnapshot(), { ok: true, url: '/api/agent/snapshot' });
   await api.startTask({ kind: 'codex', prompt: 'fix bug' });
   await api.resolveApproval('approval_1', 'approved');
+  await api.sendInput('task_1', 'continue\n');
 
   assert.deepEqual(calls.map((call) => [call.url, call.init.method || 'GET']), [
     ['/api/agent/snapshot', 'GET'],
     ['/api/agent/tasks', 'POST'],
-    ['/api/agent/approvals/approval_1/resolve', 'POST']
+    ['/api/agent/approvals/approval_1/resolve', 'POST'],
+    ['/api/agent/tasks/task_1/input', 'POST']
   ]);
   assert.equal(calls[1].init.headers.get('Content-Type'), 'application/json');
   assert.equal(calls[1].init.body, JSON.stringify({ kind: 'codex', prompt: 'fix bug' }));
   assert.equal(calls[1].init.identity, true);
   assert.equal(calls[2].init.body, JSON.stringify({ status: 'approved' }));
+  assert.equal(calls[3].init.body, JSON.stringify({ input: 'continue\n' }));
 });
 
 test('agent api exports default helpers backed by global fetch', async () => {
@@ -60,6 +64,7 @@ test('agent api exports default helpers backed by global fetch', async () => {
     await fetchAgentSnapshot({ withIdentity: (init = {}) => init });
     await startAgentTask({ prompt: 'ship it' }, { withIdentity: (init = {}) => init });
     await resolveAgentApproval('approval_2', 'rejected', { withIdentity: (init = {}) => init });
+    await sendAgentInput('task_2', 'continue', { withIdentity: (init = {}) => init });
   } finally {
     globalThis.fetch = originalFetch;
   }
@@ -67,7 +72,8 @@ test('agent api exports default helpers backed by global fetch', async () => {
   assert.deepEqual(calls.map((call) => call.url), [
     '/api/agent/snapshot',
     '/api/agent/tasks',
-    '/api/agent/approvals/approval_2/resolve'
+    '/api/agent/approvals/approval_2/resolve',
+    '/api/agent/tasks/task_2/input'
   ]);
 });
 

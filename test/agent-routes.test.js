@@ -76,6 +76,85 @@ test('mcp tool endpoint creates agent task', async () => {
   assert.equal(res.body.task.kind, 'shell');
 });
 
+test('agent routes send input through the runner instead of appending fake output', async () => {
+  const store = createMemoryAgentStore();
+  const sent = [];
+  const app = createTestApp(store, {
+    async startTask({ userId, task }) {
+      await store.updateTask({ userId, taskId: task.id, patch: { status: 'running' } });
+    },
+    async sendInput(args) {
+      sent.push(args);
+    }
+  });
+  const created = await requestJson(app, '/api/agent/tasks', {
+    method: 'POST',
+    body: { kind: 'shell', prompt: 'cat', title: 'Interactive shell' }
+  });
+
+  const res = await requestJson(app, `/api/agent/tasks/${created.body.task.id}/input`, {
+    method: 'POST',
+    body: { input: 'continue\n' }
+  });
+
+  assert.equal(res.status, 200);
+  assert.equal(sent.length, 1);
+  assert.equal(sent[0].taskId, created.body.task.id);
+  assert.equal(sent[0].input, 'continue\n');
+  assert.equal((await store.getTask({ userId: 'user_1', taskId: created.body.task.id })).outputTail, '');
+});
+
+test('mcp tool endpoint sends input to an existing task', async () => {
+  const store = createMemoryAgentStore();
+  const sent = [];
+  const app = createTestApp(store, {
+    async startTask({ userId, task }) {
+      await store.updateTask({ userId, taskId: task.id, patch: { status: 'running' } });
+    },
+    async sendInput(args) {
+      sent.push(args);
+    }
+  });
+  const created = await requestJson(app, '/api/mcp/tools/create_agent_task', {
+    method: 'POST',
+    body: { kind: 'shell', prompt: 'cat' }
+  });
+
+  const res = await requestJson(app, '/api/mcp/tools/send_agent_input', {
+    method: 'POST',
+    body: { taskId: created.body.task.id, input: 'next step' }
+  });
+
+  assert.equal(res.status, 200);
+  assert.equal(sent.length, 1);
+  assert.equal(sent[0].taskId, created.body.task.id);
+  assert.equal(sent[0].input, 'next step');
+});
+
+test('agent snapshot includes delivery state for each task', async () => {
+  const store = createMemoryAgentStore();
+  const app = createTestApp(store, {
+    async startTask({ userId, task }) {
+      await store.updateTask({ userId, taskId: task.id, patch: { status: 'running' } });
+    },
+    async sendInput() {}
+  });
+  const created = await requestJson(app, '/api/agent/tasks', {
+    method: 'POST',
+    body: { kind: 'shell', prompt: 'echo ok', title: 'Delivery task' }
+  });
+  await requestJson(app, `/api/agent/tasks/${created.body.task.id}/delivery`, {
+    method: 'POST',
+    body: { prUrl: 'https://example.test/pr/1', ciStatus: 'passed', summary: 'Ready' }
+  });
+
+  const snapshot = await requestJson(app, '/api/agent/snapshot');
+
+  assert.equal(snapshot.status, 200);
+  assert.equal(snapshot.body.tasks[0].delivery.prUrl, 'https://example.test/pr/1');
+  assert.equal(snapshot.body.tasks[0].delivery.ciStatus, 'passed');
+});
+
 function createTestApp(store, runner) {
   const app = express();
   app.use(express.json());

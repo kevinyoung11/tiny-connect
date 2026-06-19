@@ -63,10 +63,133 @@ test('agent runner keeps cancelled status when killed task exits later', async (
   assert.equal(updated.outputTail, 'bad\n');
 });
 
+test('agent runner starts codex tasks inside a persistent tmux session', async () => {
+  const store = createMemoryAgentStore();
+  const child = createFakeChild();
+  const spawned = [];
+  const runner = createAgentRunner({
+    store,
+    spawnImpl(command, args) {
+      spawned.push({ command, args });
+      return child;
+    }
+  });
+  const task = await store.createTask({
+    userId: 'user_1',
+    title: 'Codex',
+    kind: 'codex',
+    prompt: 'fix mobile scroll',
+    status: 'queued',
+    riskLevel: 'safe',
+    tmuxSession: 'tc-codex-test',
+    projectPath: '/repo'
+  });
+
+  await runner.startTask({ userId: 'user_1', task });
+
+  assert.deepEqual(spawned, [{
+    command: 'tmux',
+    args: ['new-session', '-A', '-s', 'tc-codex-test', '-c', '/repo', "codex 'fix mobile scroll'"]
+  }]);
+  const updated = await store.getTask({ userId: 'user_1', taskId: task.id });
+  assert.equal(updated.runnerCommand, 'tmux');
+});
+
+test('agent runner sends input to a running process stdin', async () => {
+  const store = createMemoryAgentStore();
+  const child = createFakeChild();
+  const runner = createAgentRunner({ store, spawnImpl: () => child });
+  const task = await store.createTask({
+    userId: 'user_1',
+    title: 'Shell',
+    kind: 'shell',
+    prompt: 'cat',
+    status: 'queued',
+    riskLevel: 'safe',
+    tmuxSession: 'tc-shell-input'
+  });
+
+  await runner.startTask({ userId: 'user_1', task });
+  await runner.sendInput({ userId: 'user_1', taskId: task.id, input: 'continue\n' });
+
+  assert.equal(child.stdin.writes.join(''), 'continue\n');
+});
+
+test('agent runner sends input to tmux backed codex sessions', async () => {
+  const store = createMemoryAgentStore();
+  const taskChild = createFakeChild();
+  const sendChild = createFakeChild();
+  const spawned = [];
+  const runner = createAgentRunner({
+    store,
+    spawnImpl(command, args) {
+      spawned.push({ command, args });
+      return spawned.length === 1 ? taskChild : sendChild;
+    }
+  });
+  const task = await store.createTask({
+    userId: 'user_1',
+    title: 'Codex',
+    kind: 'codex',
+    prompt: 'start work',
+    status: 'queued',
+    riskLevel: 'safe',
+    tmuxSession: 'tc-codex-input'
+  });
+
+  await runner.startTask({ userId: 'user_1', task });
+  await runner.sendInput({ userId: 'user_1', taskId: task.id, input: 'continue this task' });
+
+  assert.deepEqual(spawned[1], {
+    command: 'tmux',
+    args: ['send-keys', '-t', 'tc-codex-input', 'continue this task', 'Enter']
+  });
+});
+
+test('agent runner kills tmux backed sessions when cancelled', async () => {
+  const store = createMemoryAgentStore();
+  const taskChild = createFakeChild();
+  const killChild = createFakeChild();
+  const spawned = [];
+  const runner = createAgentRunner({
+    store,
+    spawnImpl(command, args) {
+      spawned.push({ command, args });
+      return spawned.length === 1 ? taskChild : killChild;
+    }
+  });
+  const task = await store.createTask({
+    userId: 'user_1',
+    title: 'Codex',
+    kind: 'codex',
+    prompt: 'start work',
+    status: 'queued',
+    riskLevel: 'safe',
+    tmuxSession: 'tc-codex-cancel'
+  });
+
+  await runner.startTask({ userId: 'user_1', task });
+  await runner.cancelTask({ userId: 'user_1', taskId: task.id });
+
+  assert.deepEqual(spawned[1], {
+    command: 'tmux',
+    args: ['kill-session', '-t', 'tc-codex-cancel']
+  });
+  assert.equal(taskChild.killedWith, undefined);
+  assert.equal((await store.getTask({ userId: 'user_1', taskId: task.id })).status, 'cancelled');
+});
+
 function createFakeChild() {
   const child = new EventEmitter();
   child.stdout = new EventEmitter();
   child.stderr = new EventEmitter();
+  child.stdin = {
+    writes: [],
+    write(value) {
+      child.stdin.writes.push(value);
+      return true;
+    }
+  };
   child.kill = (signal) => {
     child.killedWith = signal;
   };

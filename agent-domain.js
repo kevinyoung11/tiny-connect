@@ -34,6 +34,29 @@ export function buildRunnerCommand(task) {
   throw new Error(`Unsupported task kind: ${task.kind}`);
 }
 
+export function buildTmuxRunnerCommand(task) {
+  const session = sanitizeTmuxName(task.tmuxSession || `${task.kind}-${task.id || 'task'}`);
+  const args = ['new-session', '-A', '-s', session];
+  if (task.projectPath) args.push('-c', task.projectPath);
+  args.push(buildAgentCommandLine(task));
+  return { command: 'tmux', args };
+}
+
+function buildAgentCommandLine(task) {
+  if (task.kind !== 'codex' && task.kind !== 'claude') {
+    const spec = buildRunnerCommand(task);
+    return [spec.command, ...spec.args.map(shellQuote)].join(' ');
+  }
+  const parts = [task.kind];
+  if (task.model) parts.push('--model', shellQuote(task.model));
+  parts.push(shellQuote(task.prompt));
+  return parts.join(' ');
+}
+
+function shellQuote(value) {
+  return `'${String(value).replaceAll("'", "'\\''")}'`;
+}
+
 export function sanitizeTmuxName(value) {
   return String(value || 'task')
     .replace(/[^A-Za-z0-9_-]+/g, '-')

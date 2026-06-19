@@ -28,6 +28,11 @@ export function createAgentRouter({ store, runner, getScope, mcpOnly = false } =
       const result = await resolveApprovalFlow({ req, store, runner, getScope, approvalId: req.body?.approvalId });
       res.json(result);
     }));
+    router.post('/send_agent_input', asyncHandler(async (req, res) => {
+      const scope = await getScope(req);
+      await runner.sendInput({ ...scope, taskId: req.body?.taskId, input: req.body?.input || '' });
+      res.json({ ok: true });
+    }));
     return router;
   }
 
@@ -38,7 +43,7 @@ export function createAgentRouter({ store, runner, getScope, mcpOnly = false } =
 
   router.get('/snapshot', asyncHandler(async (req, res) => {
     const scope = await getScope(req);
-    const tasks = await store.listTasks(scope);
+    const tasks = await tasksWithDelivery({ store, scope });
     const approvals = await store.listApprovals({ ...scope, status: 'pending' });
     res.json({ tasks, approvals });
   }));
@@ -61,7 +66,7 @@ export function createAgentRouter({ store, runner, getScope, mcpOnly = false } =
 
   router.post('/tasks/:id/input', asyncHandler(async (req, res) => {
     const scope = await getScope(req);
-    await store.appendOutput({ ...scope, taskId: req.params.id, chunk: req.body?.input || '' });
+    await runner.sendInput({ ...scope, taskId: req.params.id, input: req.body?.input || '' });
     res.json({ ok: true });
   }));
 
@@ -148,6 +153,14 @@ async function taskDetail({ store, scope, taskId }) {
   const approval = approvals.find((item) => item.taskId === task.id && item.status === 'pending') || null;
   const delivery = await store.getDelivery({ ...scope, taskId: task.id });
   return { task, approval, delivery };
+}
+
+async function tasksWithDelivery({ store, scope }) {
+  const tasks = await store.listTasks(scope);
+  return Promise.all(tasks.map(async (task) => ({
+    ...task,
+    delivery: await store.getDelivery({ ...scope, taskId: task.id })
+  })));
 }
 
 function asyncHandler(fn) {

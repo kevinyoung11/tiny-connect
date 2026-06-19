@@ -13,6 +13,11 @@ try {
   const safe = await post('/api/agent/tasks', { kind: 'shell', prompt: 'printf agent-smoke-ok', title: 'Smoke safe task' });
   await waitForTask(safe.task.id, (task) => task.status === 'completed' && task.outputTail.includes('agent-smoke-ok'));
 
+  const interactive = await post('/api/agent/tasks', { kind: 'shell', prompt: 'cat', title: 'Smoke interactive task' });
+  await post(`/api/agent/tasks/${interactive.task.id}/input`, { input: 'agent-input-ok\n' });
+  await waitForTask(interactive.task.id, (task) => task.outputTail.includes('agent-input-ok'));
+  await post(`/api/agent/tasks/${interactive.task.id}/cancel`, {});
+
   const risky = await post('/api/agent/tasks', { kind: 'shell', prompt: 'git push origin main', title: 'Smoke approval task' });
   assert(risky.task.status === 'waiting_approval', 'risky task should wait for approval');
   assert(risky.approval?.id, 'risky task should create approval');

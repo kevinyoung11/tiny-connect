@@ -11,8 +11,10 @@ export function initAgentConsole({ withIdentity = (init) => init, toast = () => 
   const sheet = document.querySelector('#agentSheet');
   const closeBtn = document.querySelector('#closeAgentSheet');
   const form = document.querySelector('#agentTaskForm');
+  const inputForm = document.querySelector('#agentInputForm');
   const kindInput = document.querySelector('#agentKind');
   const promptInput = document.querySelector('#agentPrompt');
+  const taskInput = document.querySelector('#agentInput');
   const taskList = document.querySelector('#agentTaskList');
   const approvalList = document.querySelector('#agentApprovalList');
   const output = document.querySelector('#agentOutput');
@@ -71,6 +73,14 @@ export function initAgentConsole({ withIdentity = (init) => init, toast = () => 
     const result = await api.startTask({ kind: kindInput.value, prompt, title: prompt });
     selectedTaskId = result.task?.id || selectedTaskId;
     promptInput.value = '';
+    await refresh();
+  });
+  inputForm?.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const input = taskInput?.value || '';
+    if (!selectedTaskId || !input.trim()) return;
+    await api.sendInput(selectedTaskId, input);
+    taskInput.value = '';
     await refresh();
   });
 

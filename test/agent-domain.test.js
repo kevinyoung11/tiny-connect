@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   appendOutput,
   buildRunnerCommand,
+  buildTmuxRunnerCommand,
   classifyRisk,
   createRingBuffer,
   normalizeTaskInput,
@@ -58,6 +59,46 @@ test('builds runner commands for shell codex and claude', () => {
     command: 'claude',
     args: ['fix bug']
   });
+});
+
+test('builds persistent tmux runner commands for codex and claude sessions', () => {
+  assert.deepEqual(buildTmuxRunnerCommand({
+    kind: 'codex',
+    prompt: 'fix mobile scroll',
+    tmuxSession: 'tc-codex-abc',
+    projectPath: '/repo',
+    model: 'gpt-5-codex'
+  }), {
+    command: 'tmux',
+    args: [
+      'new-session',
+      '-A',
+      '-s',
+      'tc-codex-abc',
+      '-c',
+      '/repo',
+      "codex --model 'gpt-5-codex' 'fix mobile scroll'"
+    ]
+  });
+  assert.deepEqual(buildTmuxRunnerCommand({
+    kind: 'claude',
+    prompt: 'fix mobile scroll',
+    tmuxSession: 'tc-claude-abc'
+  }), {
+    command: 'tmux',
+    args: ['new-session', '-A', '-s', 'tc-claude-abc', "claude 'fix mobile scroll'"]
+  });
+});
+
+test('tmux runner command shell-quotes model and prompt values', () => {
+  const command = buildTmuxRunnerCommand({
+    kind: 'codex',
+    prompt: "fix 'quotes'; rm -rf /",
+    tmuxSession: 'tc-safe',
+    model: "gpt';bad"
+  });
+
+  assert.equal(command.args.at(-1), "codex --model 'gpt'\\'';bad' 'fix '\\''quotes'\\''; rm -rf /'");
 });
 
 test('sanitizes tmux names and keeps output ring bounded', () => {

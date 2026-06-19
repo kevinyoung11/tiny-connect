@@ -320,11 +320,11 @@ Create `createAgentRouter({ store, runner, getScope })` returning an Express rou
 - Modify: `supabase-store.js`
 - Modify: `test/supabase-store.test.js`
 
-- [ ] **Step 1: Add failing schema assertions**
+- [x] **Step 1: Add failing schema assertions**
 
 Assert `agent_tasks`, `agent_approvals`, `agent_audit_logs`, and `agent_delivery` creation SQL and indexes.
 
-- [ ] **Step 2: Implement schema and `createSupabaseAgentStore()`**
+- [x] **Step 2: Implement schema and `createSupabaseAgentStore()`**
 
 Use existing Supabase patterns and sanitize text/meta like activity store.
 
@@ -334,11 +334,11 @@ Use existing Supabase patterns and sanitize text/meta like activity store.
 - Modify: `server.js`
 - Test: `test/server-startup.test.js`
 
-- [ ] **Step 1: Add failing server import/mount test**
+- [x] **Step 1: Add failing server import/mount test**
 
 Assert server imports without Supabase env and that Agent route module can be mounted.
 
-- [ ] **Step 2: Wire agent store, runner, and routes**
+- [x] **Step 2: Wire agent store, runner, and routes**
 
 Instantiate memory store when Supabase is not configured, Supabase store when configured. Mount `/api/agent` and `/api/mcp/tools`.
 
@@ -349,11 +349,11 @@ Instantiate memory store when Supabase is not configured, Supabase store when co
 - Create: `public/agent-ui.js`
 - Test: `test/agent-ui.test.js`
 
-- [ ] **Step 1: Write failing UI tests**
+- [x] **Step 1: Write failing UI tests**
 
 Test renderers output task rows, approval cards, output tail, and delivery cards into fake DOM containers.
 
-- [ ] **Step 2: Implement API and UI modules**
+- [x] **Step 2: Implement API and UI modules**
 
 Keep functions focused and DOM-oriented like `profile-ui.js`.
 
@@ -366,11 +366,11 @@ Keep functions focused and DOM-oriented like `profile-ui.js`.
 - Modify: `public/styles.css`
 - Test: `test/agent-console-page.test.js`
 
-- [ ] **Step 1: Write failing page tests**
+- [x] **Step 1: Write failing page tests**
 
 Assert page has `#agentBtn`, `#agentSheet`, create form fields, approval list, task list, and imports `agent-console.js`.
 
-- [ ] **Step 2: Implement page integration**
+- [x] **Step 2: Implement page integration**
 
 Add HUD button, sheet markup, styles, and minimal client import/init.
 
@@ -380,11 +380,11 @@ Add HUD button, sheet markup, styles, and minimal client import/init.
 - Create: `scripts/smoke-agent-flow.js`
 - Modify: `package.json`
 
-- [ ] **Step 1: Write smoke script**
+- [x] **Step 1: Write smoke script**
 
 Script starts server on a test port, creates a shell task, polls completion, creates a high-risk task, resolves approval, updates delivery, verifies task detail.
 
-- [ ] **Step 2: Add npm script**
+- [x] **Step 2: Add npm script**
 
 Add `"smoke:agent": "node scripts/smoke-agent-flow.js"`.
 
@@ -396,3 +396,28 @@ Add `"smoke:agent": "node scripts/smoke-agent-flow.js"`.
 - [ ] Open root app still returns 200.
 - [ ] Confirm `/terminal` behavior was not modified except import wiring.
 - [ ] Commit and push only after all checks pass.
+
+## Task 10: Continuous Session Control Hardening
+
+**Files:**
+- Modify: `agent-domain.js`
+- Modify: `agent-runner.js`
+- Modify: `agent-routes.js`
+- Modify: `public/agent-api.js`
+- Modify: `public/agent-console.js`
+- Modify: `public/index.html`
+- Modify: `public/styles.css`
+- Modify: `scripts/smoke-agent-flow.js`
+- Tests: `test/agent-domain.test.js`, `test/agent-runner.test.js`, `test/agent-routes.test.js`, `test/agent-ui.test.js`, `test/agent-console-page.test.js`
+
+- [x] Add failing tests proving `codex`/`claude` start through persistent tmux sessions.
+- [x] Implement tmux-backed start commands for `codex` and `claude`.
+- [x] Add shell-escaping tests for tmux command prompt/model values.
+- [x] Implement safe POSIX single-quote escaping for tmux command payloads.
+- [x] Add runner tests for sending input to local stdin and tmux sessions.
+- [x] Implement `runner.sendInput()`.
+- [x] Add REST and MCP tests for task input.
+- [x] Wire `POST /api/agent/tasks/:id/input` and MCP `send_agent_input` to the runner.
+- [x] Add mobile input form and Agent API helper.
+- [x] Include delivery state in `/api/agent/snapshot` so the phone console can render PR/CI data during polling.
+- [x] Extend smoke flow to send input into an interactive shell task.

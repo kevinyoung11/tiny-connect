@@ -1134,6 +1134,13 @@ label {
   margin-bottom: 12px;
 }
 .agent-task-form .mini-btn { height: 42px; }
+.agent-input-form {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+  padding: 0 10px 10px;
+}
+.agent-input-form .mini-btn { height: 42px; }
 .agent-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;

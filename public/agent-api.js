@@ -14,6 +14,13 @@ export function createAgentApi({ fetchImpl = globalThis.fetch, withIdentity = (i
         jsonRequest('POST', { status }),
         { fetchImpl, withIdentity, ...options }
       );
+    },
+    sendInput(taskId, input, options = {}) {
+      return requestJson(
+        `/api/agent/tasks/${encodeURIComponent(taskId)}/input`,
+        jsonRequest('POST', { input }),
+        { fetchImpl, withIdentity, ...options }
+      );
     }
   };
 }
@@ -28,6 +35,10 @@ export function startAgentTask(task, options = {}) {
 
 export function resolveAgentApproval(approvalId, status, options = {}) {
   return createAgentApi(options).resolveApproval(approvalId, status);
+}
+
+export function sendAgentInput(taskId, input, options = {}) {
+  return createAgentApi(options).sendInput(taskId, input);
 }
 
 function jsonRequest(method, body) {

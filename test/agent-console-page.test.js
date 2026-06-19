@@ -14,6 +14,8 @@ test('main page exposes agent console shell and module import', () => {
   assert.match(html, /id="agentTaskList"/);
   assert.match(html, /id="agentApprovalList"/);
   assert.match(html, /id="agentOutput"/);
+  assert.match(html, /id="agentInputForm"/);
+  assert.match(html, /id="agentInput"/);
   assert.match(html, /id="agentDelivery"/);
   assert.match(js, /import \{ initAgentConsole \} from '\.\/agent-console\.js';/);
   assert.match(js, /initAgentConsole\(/);
