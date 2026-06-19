@@ -30,7 +30,7 @@ export function createAgentRouter({ store, runner, getScope, mcpOnly = false } =
     }));
     router.post('/send_agent_input', asyncHandler(async (req, res) => {
       const scope = await getScope(req);
-      await runner.sendInput({ ...scope, taskId: req.body?.taskId, input: req.body?.input || '' });
+      await sendTaskInputFlow({ store, runner, scope, taskId: req.body?.taskId, input: req.body?.input || '' });
       res.json({ ok: true });
     }));
     router.post('/request_agent_approval', asyncHandler(async (req, res) => {
@@ -71,7 +71,7 @@ export function createAgentRouter({ store, runner, getScope, mcpOnly = false } =
 
   router.post('/tasks/:id/input', asyncHandler(async (req, res) => {
     const scope = await getScope(req);
-    await runner.sendInput({ ...scope, taskId: req.params.id, input: req.body?.input || '' });
+    await sendTaskInputFlow({ store, runner, scope, taskId: req.params.id, input: req.body?.input || '' });
     res.json({ ok: true });
   }));
 
@@ -241,7 +241,7 @@ async function resolveApprovalFlow({ req, store, runner, getScope, approvalId })
   const task = await store.getTask({ ...scope, taskId: approval.taskId });
   if (status === 'approved') {
     if (approval.metadata?.mode === 'command') {
-      await runner.sendInput({ ...scope, taskId: task.id, input: approval.command });
+      await sendTaskInputFlow({ store, runner, scope, taskId: task.id, input: approval.command });
       await store.updateTask({ ...scope, taskId: task.id, patch: { status: 'running' } });
     } else {
       await store.updateTask({ ...scope, taskId: task.id, patch: { status: 'queued' } });
@@ -252,6 +252,19 @@ async function resolveApprovalFlow({ req, store, runner, getScope, approvalId })
   }
   await store.logAudit?.({ ...scope, taskId: task.id, event: `approval_${status}`, message: approval.command });
   return { approval, task: await store.getTask({ ...scope, taskId: task.id }) };
+}
+
+async function sendTaskInputFlow({ store, runner, scope, taskId, input }) {
+  try {
+    await runner.sendInput({ ...scope, taskId, input });
+  } catch (error) {
+    if (isMissingTmuxSessionError(error)) {
+      const task = await store.getTask({ ...scope, taskId });
+      await store.updateTask({ ...scope, taskId: task.id, patch: { status: 'failed', error: error.message } });
+      await store.logAudit?.({ ...scope, taskId: task.id, event: 'task_failed', message: error.message });
+    }
+    throw error;
+  }
 }
 
 async function taskDetail({ store, runner, scope, taskId }) {

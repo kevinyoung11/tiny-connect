@@ -132,6 +132,58 @@ test('mcp tool endpoint sends input to an existing task', async () => {
   assert.equal(sent[0].input, 'next step');
 });
 
+test('agent routes mark tmux tasks failed when sending input reports a missing session', async () => {
+  const store = createMemoryAgentStore();
+  const app = createTestApp(store, {
+    async startTask({ userId, task }) {
+      await store.updateTask({ userId, taskId: task.id, patch: { status: 'running' } });
+    },
+    async sendInput() {
+      throw new Error("can't find session: tc-codex-input-missing");
+    }
+  });
+  const created = await requestJson(app, '/api/agent/tasks', {
+    method: 'POST',
+    body: { kind: 'codex', prompt: 'work', title: 'Missing input tmux' }
+  });
+
+  const res = await requestJson(app, `/api/agent/tasks/${created.body.task.id}/input`, {
+    method: 'POST',
+    body: { input: 'continue' }
+  });
+  const task = await store.getTask({ userId: 'user_1', taskId: created.body.task.id });
+
+  assert.equal(res.status, 400);
+  assert.equal(task.status, 'failed');
+  assert.match(task.error, /can't find session/);
+});
+
+test('mcp tool endpoint marks tmux tasks failed when sending input reports a missing session', async () => {
+  const store = createMemoryAgentStore();
+  const app = createTestApp(store, {
+    async startTask({ userId, task }) {
+      await store.updateTask({ userId, taskId: task.id, patch: { status: 'running' } });
+    },
+    async sendInput() {
+      throw new Error('no such session: tc-claude-input-missing');
+    }
+  });
+  const created = await requestJson(app, '/api/mcp/tools/create_agent_task', {
+    method: 'POST',
+    body: { kind: 'claude', prompt: 'work' }
+  });
+
+  const res = await requestJson(app, '/api/mcp/tools/send_agent_input', {
+    method: 'POST',
+    body: { taskId: created.body.task.id, input: 'continue' }
+  });
+  const task = await store.getTask({ userId: 'user_1', taskId: created.body.task.id });
+
+  assert.equal(res.status, 400);
+  assert.equal(task.status, 'failed');
+  assert.match(task.error, /no such session/);
+});
+
 test('agent snapshot includes delivery state for each task', async () => {
   const store = createMemoryAgentStore();
   const app = createTestApp(store, {
@@ -311,6 +363,36 @@ test('agent routes create running command approvals and send approved commands t
   assert.equal(sent.length, 1);
   assert.equal(sent[0].taskId, created.body.task.id);
   assert.equal(sent[0].input, 'git push origin main');
+});
+
+test('agent routes mark command approval tasks failed when approved input cannot reach tmux', async () => {
+  const store = createMemoryAgentStore();
+  const app = createTestApp(store, {
+    async startTask({ userId, task }) {
+      await store.updateTask({ userId, taskId: task.id, patch: { status: 'running' } });
+    },
+    async sendInput() {
+      throw new Error('session not found: tc-codex-approval-missing');
+    }
+  });
+  const created = await requestJson(app, '/api/agent/tasks', {
+    method: 'POST',
+    body: { kind: 'codex', prompt: 'work safely', title: 'Codex approval' }
+  });
+  const requested = await requestJson(app, `/api/agent/tasks/${created.body.task.id}/approval-requests`, {
+    method: 'POST',
+    body: { command: 'git push origin main' }
+  });
+
+  const approved = await requestJson(app, `/api/agent/approvals/${requested.body.approval.id}/resolve`, {
+    method: 'POST',
+    body: { status: 'approved' }
+  });
+  const task = await store.getTask({ userId: 'user_1', taskId: created.body.task.id });
+
+  assert.equal(approved.status, 404);
+  assert.equal(task.status, 'failed');
+  assert.match(task.error, /session not found/);
 });
 
 test('agent routes return approval detail by id for hook polling', async () => {
