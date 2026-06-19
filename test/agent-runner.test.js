@@ -89,7 +89,7 @@ test('agent runner starts codex tasks inside a persistent tmux session', async (
 
   assert.deepEqual(spawned, [{
     command: 'tmux',
-    args: ['new-session', '-A', '-d', '-s', 'tc-codex-test', '-c', '/repo', "codex 'fix mobile scroll'"]
+    args: ['new-session', '-A', '-d', '-s', 'tc-codex-test', '-c', '/repo', "sh -lc 'codex '\\''fix mobile scroll'\\''; code=$?; printf '\\''\\n__tiny_connect_exit:%s__\\n'\\'' \"$code\"; exit \"$code\"'"]
   }]);
   const updated = await store.getTask({ userId: 'user_1', taskId: task.id });
   assert.equal(updated.runnerCommand, 'tmux');
@@ -295,6 +295,111 @@ test('agent runner captures tmux pane output after process map is gone', async (
   });
   assert.equal(result.output, 'line one\nline two\n');
   assert.equal((await store.getTask({ userId: 'user_1', taskId: task.id })).outputTail, 'line one\nline two\n');
+});
+
+test('agent runner keeps tmux backed tasks running while session exists', async () => {
+  const store = createMemoryAgentStore();
+  const statusChild = createFakeChild();
+  const spawned = [];
+  const runner = createAgentRunner({
+    store,
+    spawnImpl(command, args) {
+      spawned.push({ command, args });
+      return statusChild;
+    }
+  });
+  const task = await store.createTask({
+    userId: 'user_1',
+    title: 'Codex',
+    kind: 'codex',
+    prompt: 'continue work',
+    status: 'running',
+    riskLevel: 'safe',
+    tmuxSession: 'tc-codex-live'
+  });
+
+  const refresh = runner.refreshTaskStatus({ userId: 'user_1', taskId: task.id });
+  await flushAsyncHandlers();
+  statusChild.emit('exit', 0);
+  const refreshed = await refresh;
+
+  assert.deepEqual(spawned[0], {
+    command: 'tmux',
+    args: ['has-session', '-t', 'tc-codex-live']
+  });
+  assert.equal(refreshed.status, 'running');
+  assert.equal((await store.getTask({ userId: 'user_1', taskId: task.id })).status, 'running');
+});
+
+test('agent runner marks tmux backed tasks completed from captured exit sentinel', async () => {
+  const store = createMemoryAgentStore();
+  const statusChild = createFakeChild();
+  const captureChild = createFakeChild();
+  const spawned = [];
+  const runner = createAgentRunner({
+    store,
+    spawnImpl(command, args) {
+      spawned.push({ command, args });
+      return spawned.length === 1 ? statusChild : captureChild;
+    }
+  });
+  const task = await store.createTask({
+    userId: 'user_1',
+    title: 'Codex',
+    kind: 'codex',
+    prompt: 'continue work',
+    status: 'running',
+    riskLevel: 'safe',
+    tmuxSession: 'tc-codex-done'
+  });
+
+  const refresh = runner.refreshTaskStatus({ userId: 'user_1', taskId: task.id });
+  await flushAsyncHandlers();
+  statusChild.stderr.emit('data', Buffer.from("can't find session: tc-codex-done\n"));
+  statusChild.emit('exit', 1);
+  await flushAsyncHandlers();
+  captureChild.stdout.emit('data', Buffer.from('finished work\n__tiny_connect_exit:0__\n'));
+  captureChild.emit('exit', 0);
+  const refreshed = await refresh;
+
+  assert.deepEqual(spawned.map((item) => item.args[0]), ['has-session', 'capture-pane']);
+  assert.equal(refreshed.status, 'completed');
+  assert.equal(refreshed.exitCode, 0);
+  assert.equal(refreshed.outputTail, 'finished work');
+});
+
+test('agent runner marks tmux backed tasks failed from captured exit sentinel', async () => {
+  const store = createMemoryAgentStore();
+  const statusChild = createFakeChild();
+  const captureChild = createFakeChild();
+  const children = [statusChild, captureChild];
+  const runner = createAgentRunner({
+    store,
+    spawnImpl() {
+      return children.shift();
+    }
+  });
+  const task = await store.createTask({
+    userId: 'user_1',
+    title: 'Claude',
+    kind: 'claude',
+    prompt: 'continue work',
+    status: 'running',
+    riskLevel: 'safe',
+    tmuxSession: 'tc-claude-failed'
+  });
+
+  const refresh = runner.refreshTaskStatus({ userId: 'user_1', taskId: task.id });
+  await flushAsyncHandlers();
+  statusChild.emit('exit', 1);
+  await flushAsyncHandlers();
+  captureChild.stdout.emit('data', Buffer.from('failed work\n__tiny_connect_exit:2__\n'));
+  captureChild.emit('exit', 0);
+  const refreshed = await refresh;
+
+  assert.equal(refreshed.status, 'failed');
+  assert.equal(refreshed.exitCode, 2);
+  assert.equal(refreshed.outputTail, 'failed work');
 });
 
 function createFakeChild() {

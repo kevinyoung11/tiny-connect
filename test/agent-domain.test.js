@@ -78,7 +78,7 @@ test('builds persistent tmux runner commands for codex and claude sessions', () 
       'tc-codex-abc',
       '-c',
       '/repo',
-      "codex --model 'gpt-5-codex' 'fix mobile scroll'"
+      "sh -lc 'codex --model '\\''gpt-5-codex'\\'' '\\''fix mobile scroll'\\''; code=$?; printf '\\''\\n__tiny_connect_exit:%s__\\n'\\'' \"$code\"; exit \"$code\"'"
     ]
   });
   assert.deepEqual(buildTmuxRunnerCommand({
@@ -87,7 +87,7 @@ test('builds persistent tmux runner commands for codex and claude sessions', () 
     tmuxSession: 'tc-claude-abc'
   }), {
     command: 'tmux',
-    args: ['new-session', '-A', '-d', '-s', 'tc-claude-abc', "claude 'fix mobile scroll'"]
+    args: ['new-session', '-A', '-d', '-s', 'tc-claude-abc', "sh -lc 'claude '\\''fix mobile scroll'\\''; code=$?; printf '\\''\\n__tiny_connect_exit:%s__\\n'\\'' \"$code\"; exit \"$code\"'"]
   });
 });
 
@@ -99,7 +99,7 @@ test('tmux runner command shell-quotes model and prompt values', () => {
     model: "gpt';bad"
   });
 
-  assert.equal(command.args.at(-1), "codex --model 'gpt'\\'';bad' 'fix '\\''quotes'\\''; rm -rf /'");
+  assert.equal(command.args.at(-1), "sh -lc 'codex --model '\\''gpt'\\''\\'\\'''\\'';bad'\\'' '\\''fix '\\''\\'\\'''\\''quotes'\\''\\'\\'''\\''; rm -rf /'\\''; code=$?; printf '\\''\\n__tiny_connect_exit:%s__\\n'\\'' \"$code\"; exit \"$code\"'");
 });
 
 test('sanitizes tmux names and keeps output ring bounded', () => {

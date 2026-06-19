@@ -79,6 +79,22 @@ export function createAgentRunner({ store, spawnImpl = spawn } = {}) {
     return { output };
   }
 
+  async function refreshTaskStatus({ userId, taskId }) {
+    if (!userId) throw new Error('userId is required');
+    const task = await store.getTask({ userId, taskId });
+    if (!isTmuxBacked(task) || task.status !== 'running') return task;
+    if (await tmuxHasSession(task.tmuxSession)) return task;
+    const output = await captureTmuxPane(task.tmuxSession, 2000);
+    const exitCode = parseExitSentinel(output);
+    if (exitCode === null) return task;
+    const outputTail = stripExitSentinel(output);
+    await replaceOutput({ userId, taskId, output: outputTail });
+    const status = exitCode === 0 ? 'completed' : 'failed';
+    await store.updateTask({ userId, taskId, patch: { status, exitCode } });
+    await store.logAudit?.({ userId, taskId, event: status === 'completed' ? 'task_completed' : 'task_failed', message: `exit ${exitCode}` });
+    return await store.getTask({ userId, taskId });
+  }
+
   async function cancelTask({ userId, taskId }) {
     const task = await store.getTask({ userId, taskId });
     const child = processes.get(taskId);
@@ -119,6 +135,16 @@ export function createAgentRunner({ store, spawnImpl = spawn } = {}) {
     });
   }
 
+  function tmuxHasSession(tmuxSession) {
+    return new Promise((resolve) => {
+      const child = spawnImpl('tmux', ['has-session', '-t', tmuxSession], { env: process.env });
+      child.on('error', () => resolve(false));
+      child.on('exit', (code) => {
+        resolve(code === 0);
+      });
+    });
+  }
+
   async function replaceOutput({ userId, taskId, output }) {
     if (typeof store.replaceOutput === 'function') {
       return store.replaceOutput({ userId, taskId, output });
@@ -129,7 +155,16 @@ export function createAgentRunner({ store, spawnImpl = spawn } = {}) {
     await store.appendOutput({ userId, taskId, chunk: output || previous });
   }
 
-  return { startTask, sendInput, captureOutput, cancelTask };
+  return { startTask, sendInput, captureOutput, refreshTaskStatus, cancelTask };
+}
+
+function parseExitSentinel(output) {
+  const match = String(output || '').match(/__tiny_connect_exit:(\d+)__/);
+  return match ? Number(match[1]) : null;
+}
+
+function stripExitSentinel(output) {
+  return String(output || '').replace(/\n?__tiny_connect_exit:\d+__\n?/g, '');
 }
 
 function buildStartCommand(task) {

@@ -295,7 +295,10 @@ async function tasksWithDelivery({ store, runner, scope }) {
 }
 
 async function refreshTaskOutput({ store, runner, scope, taskId }) {
-  const task = await store.getTask({ ...scope, taskId });
+  let task = await store.getTask({ ...scope, taskId });
+  if (task.status === 'running' && typeof runner.refreshTaskStatus === 'function') {
+    task = await runner.refreshTaskStatus({ ...scope, taskId: task.id }) || await store.getTask({ ...scope, taskId: task.id });
+  }
   if (task.status !== 'running' || (task.kind !== 'codex' && task.kind !== 'claude') || typeof runner.captureOutput !== 'function') {
     return task;
   }

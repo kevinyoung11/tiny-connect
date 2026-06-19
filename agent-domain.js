@@ -45,12 +45,16 @@ export function buildTmuxRunnerCommand(task) {
 function buildAgentCommandLine(task) {
   if (task.kind !== 'codex' && task.kind !== 'claude') {
     const spec = buildRunnerCommand(task);
-    return [spec.command, ...spec.args.map(shellQuote)].join(' ');
+    return withExitSentinel([spec.command, ...spec.args.map(shellQuote)].join(' '));
   }
   const parts = [task.kind];
   if (task.model) parts.push('--model', shellQuote(task.model));
   parts.push(shellQuote(task.prompt));
-  return parts.join(' ');
+  return withExitSentinel(parts.join(' '));
+}
+
+function withExitSentinel(commandLine) {
+  return `sh -lc ${shellQuote(`${commandLine}; code=$?; printf '\\n__tiny_connect_exit:%s__\\n' "$code"; exit "$code"`)}`;
 }
 
 function shellQuote(value) {

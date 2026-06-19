@@ -318,11 +318,16 @@ test('agent delivery webhook maps pull request checks and deployment payloads', 
 test('agent routes refresh tmux output through runner capture before returning detail and snapshot', async () => {
   const store = createMemoryAgentStore();
   const captured = [];
+  const refreshed = [];
   const app = createTestApp(store, {
     async startTask({ userId, task }) {
       await store.updateTask({ userId, taskId: task.id, patch: { status: 'running' } });
     },
     async sendInput() {},
+    async refreshTaskStatus({ taskId }) {
+      refreshed.push(taskId);
+      return store.getTask({ userId: 'user_1', taskId });
+    },
     async captureOutput({ userId, taskId }) {
       captured.push(taskId);
       await store.replaceOutput({ userId, taskId, output: 'captured-pane-output' });
@@ -338,10 +343,40 @@ test('agent routes refresh tmux output through runner capture before returning d
   const output = await requestJson(app, `/api/agent/tasks/${created.body.task.id}/output`);
   const snapshot = await requestJson(app, '/api/agent/snapshot');
 
+  assert.deepEqual(refreshed, [created.body.task.id, created.body.task.id, created.body.task.id]);
   assert.deepEqual(captured, [created.body.task.id, created.body.task.id, created.body.task.id]);
   assert.equal(detail.body.task.outputTail, 'captured-pane-output');
   assert.equal(output.body.output, 'captured-pane-output');
   assert.equal(snapshot.body.tasks[0].outputTail, 'captured-pane-output');
+});
+
+test('agent routes refresh tmux status before returning snapshot', async () => {
+  const store = createMemoryAgentStore();
+  const app = createTestApp(store, {
+    async startTask({ userId, task }) {
+      await store.updateTask({ userId, taskId: task.id, patch: { status: 'running' } });
+    },
+    async sendInput() {},
+    async refreshTaskStatus({ userId, taskId }) {
+      await store.replaceOutput({ userId, taskId, output: 'finished work' });
+      return store.updateTask({ userId, taskId, patch: { status: 'completed', exitCode: 0 } });
+    },
+    async captureOutput() {
+      throw new Error('completed tasks should not capture output again');
+    }
+  });
+  const created = await requestJson(app, '/api/agent/tasks', {
+    method: 'POST',
+    body: { kind: 'codex', prompt: 'work', title: 'Lifecycle replay' }
+  });
+
+  const snapshot = await requestJson(app, '/api/agent/snapshot');
+
+  assert.equal(snapshot.status, 200);
+  assert.equal(snapshot.body.tasks[0].status, 'completed');
+  assert.equal(snapshot.body.tasks[0].exitCode, 0);
+  assert.equal(snapshot.body.tasks[0].outputTail, 'finished work');
+  assert.equal(created.body.task.status, 'running');
 });
 
 test('agent routes mark tmux tasks failed when output capture reports a missing session', async () => {
