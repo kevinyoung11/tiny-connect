@@ -10,7 +10,11 @@ import http from 'node:http';
 import { Client } from 'ssh2';
 import { WebSocketServer } from 'ws';
 import { buildConnectionConfig } from './connection-config.js';
+import { createAgentRouter } from './agent-routes.js';
+import { createAgentRunner } from './agent-runner.js';
+import { createMemoryAgentStore } from './agent-store.js';
 import {
+  createSupabaseAgentStore,
   createSupabaseActivityStore,
   createSupabaseKeyStore,
   createSupabaseProfileStore,
@@ -34,6 +38,8 @@ const keyStore = createSupabaseKeyStore(keysDir);
 const profileStore = createSupabaseProfileStore();
 const userStore = createSupabaseUserStore();
 const activityStore = createSupabaseActivityStore();
+const agentStore = supabaseConfigured ? createSupabaseAgentStore() : createMemoryAgentStore();
+const agentRunner = createAgentRunner({ store: agentStore });
 
 // sessionId → { client, config, stream, ws, cleanupTimer, settings }
 const sshSessions = new Map();
@@ -51,6 +57,9 @@ app.get('/healthz', (req, res) => {
     supabase: getSupabaseConfigStatus()
   });
 });
+
+app.use('/api/agent', createAgentRouter({ store: agentStore, runner: agentRunner, getScope: getRequestScope }));
+app.use('/api/mcp/tools', createAgentRouter({ store: agentStore, runner: agentRunner, getScope: getRequestScope, mcpOnly: true }));
 
 app.use('/api', requireSupabaseConfig);
 
@@ -214,6 +223,9 @@ app.get('/api/logs', async (req, res) => {
 });
 
 async function getRequestScope(req) {
+  if (!supabaseConfigured) {
+    return { userId: `local_${createHash('sha256').update(req.get('x-device-fingerprint') || 'local').digest('hex').slice(0, 12)}` };
+  }
   const deviceFingerprint = req.get('x-device-fingerprint');
   const user = await userStore.ensureUserForDevice({
     deviceFingerprint,
@@ -629,7 +641,7 @@ if (!process.env.VERCEL) {
 
 async function startServer() {
   if (supabaseConfigured) {
-    await Promise.all([keyStore.init(), profileStore.init(), userStore.init(), activityStore.init()]);
+    await Promise.all([keyStore.init(), profileStore.init(), userStore.init(), activityStore.init(), agentStore.init()]);
     console.log('[supabase] configured; stores initialized');
   } else {
     console.warn('[supabase] not configured; /api and SSH WebSocket connections will return configuration errors');

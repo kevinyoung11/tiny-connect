@@ -4,6 +4,7 @@ import { WebLinksAddon } from 'https://cdn.jsdelivr.net/npm/@xterm/addon-web-lin
 import { SearchAddon } from 'https://cdn.jsdelivr.net/npm/@xterm/addon-search@0.16.0/+esm';
 import { Unicode11Addon } from 'https://cdn.jsdelivr.net/npm/@xterm/addon-unicode11@0.9.0/+esm';
 import { getDeviceFingerprint, withDeviceIdentity } from './identity.js';
+import { initAgentConsole } from './agent-console.js';
 import { applyProfileToConnectionForm, renderProfileMenu } from './profile-ui.js';
 
 const FONT_STACKS = {
@@ -299,6 +300,7 @@ openModal();
 loadSettings();
 loadKeys();
 loadProfiles();
+initAgentConsole({ withIdentity: withDeviceIdentity, toast });
 
 /* ─── Connect ────────────────────────────────────────────────────────────── */
 connectForm.addEventListener('submit', e => { e.preventDefault(); doConnect(); });

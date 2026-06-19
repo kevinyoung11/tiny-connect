@@ -278,6 +278,7 @@ codex ready</pre>
         <button type="button" class="action-btn" id="pasteBtn" title="Paste">Paste</button>
         <button type="button" class="action-btn" id="searchBtn" title="Search">Search</button>
         <button type="button" class="action-btn" id="filesBtn" title="Browse files" hidden>Files</button>
+        <button type="button" class="action-btn" id="agentBtn" title="Agent Console">Agent</button>
         <button type="button" class="action-btn" id="settingsBtn" title="Settings">Settings</button>
         <button type="button" class="action-btn action-btn--close" id="disconnectBtn" aria-label="Disconnect">✕</button>
       </div>
@@ -353,6 +354,43 @@ codex ready</pre>
         <button type="button" class="mini-btn" data-debug-tab="devices">Devices</button>
       </div>
       <div class="debug-list" id="debugList"></div>
+    </div>
+
+    <div class="agent-sheet" id="agentSheet" role="dialog" aria-modal="true" aria-label="Agent Console" hidden>
+      <div class="sheet-head">
+        <div>
+          <h2 class="sheet-title">Agent Console</h2>
+          <p class="agent-subtitle">Codex / Claude tasks, approvals, and delivery</p>
+        </div>
+        <button type="button" class="btn-x" id="closeAgentSheet" aria-label="Close">✕</button>
+      </div>
+      <form class="agent-task-form" id="agentTaskForm" autocomplete="off">
+        <select id="agentKind" aria-label="Agent kind">
+          <option value="codex">Codex</option>
+          <option value="claude">Claude</option>
+          <option value="shell">Shell</option>
+        </select>
+        <input id="agentPrompt" type="text" placeholder="Describe the task..." autocomplete="off" />
+        <button type="submit" class="mini-btn">Start</button>
+      </form>
+      <div class="agent-grid">
+        <section class="agent-panel">
+          <div class="agent-panel-head">Tasks</div>
+          <div id="agentTaskList" class="agent-list"></div>
+        </section>
+        <section class="agent-panel">
+          <div class="agent-panel-head">Approvals</div>
+          <div id="agentApprovalList" class="agent-list"></div>
+        </section>
+      </div>
+      <section class="agent-panel">
+        <div class="agent-panel-head">Output</div>
+        <div id="agentOutput" class="agent-output"></div>
+      </section>
+      <section class="agent-panel">
+        <div class="agent-panel-head">Delivery</div>
+        <div id="agentDelivery" class="agent-list"></div>
+      </section>
     </div>
 
     <script type="module" src="/client.js"></script>

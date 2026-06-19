@@ -1,0 +1,596 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#0b0d10" />
+    <title>手机 Codex / Claude 控制器演示</title>
+    <style>
+      :root {
+        --bg: #0b0d10;
+        --panel: #11161b;
+        --panel-2: #151b22;
+        --line: rgba(255,255,255,.09);
+        --line-strong: rgba(255,255,255,.16);
+        --text: #eef2f6;
+        --muted: #8d99a6;
+        --soft: #c7d0d9;
+        --green: #35d49a;
+        --blue: #67a7ff;
+        --amber: #f4b95f;
+        --red: #ff6b6b;
+        --shadow: 0 24px 80px rgba(0,0,0,.42);
+        font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        background:
+          radial-gradient(circle at 10% 0%, rgba(53,212,154,.12), transparent 28%),
+          linear-gradient(180deg, #0b0d10 0%, #0e1115 48%, #090b0e 100%);
+        color: var(--text);
+      }
+
+      button, input { font: inherit; }
+      .page {
+        width: min(1180px, calc(100vw - 28px));
+        margin: 0 auto;
+        padding: 28px 0 34px;
+      }
+
+      .topbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        margin-bottom: 22px;
+      }
+
+      .brand { min-width: 0; }
+      .eyebrow {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        color: var(--green);
+        font-size: 12px;
+        font-weight: 700;
+        letter-spacing: .08em;
+        text-transform: uppercase;
+      }
+      .pulse {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: var(--green);
+        box-shadow: 0 0 0 5px rgba(53,212,154,.12);
+      }
+      h1 {
+        margin: 8px 0 6px;
+        font-size: clamp(30px, 5vw, 54px);
+        line-height: 1.02;
+        letter-spacing: 0;
+      }
+      .sub {
+        margin: 0;
+        color: var(--muted);
+        font-size: 15px;
+        line-height: 1.6;
+      }
+
+      .mode-switch {
+        display: flex;
+        gap: 6px;
+        padding: 5px;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        background: rgba(255,255,255,.04);
+      }
+      .mode-switch button {
+        min-width: 72px;
+        height: 34px;
+        border: 0;
+        border-radius: 7px;
+        color: var(--muted);
+        background: transparent;
+      }
+      .mode-switch button.active {
+        color: #06120f;
+        background: var(--green);
+      }
+
+      .shell {
+        display: grid;
+        grid-template-columns: 1fr 1.12fr 1fr;
+        gap: 14px;
+        align-items: stretch;
+      }
+
+      .phone {
+        min-width: 0;
+        border: 1px solid var(--line-strong);
+        border-radius: 28px;
+        padding: 10px;
+        background: linear-gradient(180deg, #1a2028, #0a0d11);
+        box-shadow: var(--shadow);
+      }
+      .screen {
+        min-height: 720px;
+        border: 1px solid rgba(255,255,255,.08);
+        border-radius: 21px;
+        overflow: hidden;
+        background: #0d1116;
+      }
+      .screen-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        min-height: 58px;
+        padding: 14px 15px 12px;
+        border-bottom: 1px solid var(--line);
+        background: rgba(255,255,255,.035);
+      }
+      .screen-title {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        min-width: 0;
+      }
+      .screen-title strong {
+        font-size: 15px;
+        line-height: 1.15;
+      }
+      .screen-title span {
+        color: var(--muted);
+        font-size: 11px;
+      }
+      .badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        min-height: 26px;
+        padding: 0 9px;
+        border-radius: 999px;
+        border: 1px solid var(--line);
+        color: var(--soft);
+        background: rgba(255,255,255,.04);
+        font-size: 11px;
+        white-space: nowrap;
+      }
+      .badge.ok { color: var(--green); border-color: rgba(53,212,154,.28); }
+      .badge.warn { color: var(--amber); border-color: rgba(244,185,95,.3); }
+      .dot {
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: currentColor;
+      }
+      .content {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        padding: 14px;
+      }
+
+      .card {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--panel);
+      }
+      .card-pad { padding: 12px; }
+      .card-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        margin-bottom: 10px;
+      }
+      .card-title {
+        margin: 0;
+        font-size: 13px;
+      }
+      .muted { color: var(--muted); }
+      .tiny { font-size: 11px; }
+
+      .task {
+        display: grid;
+        grid-template-columns: auto 1fr auto;
+        gap: 10px;
+        align-items: center;
+      }
+      .task-icon {
+        width: 30px;
+        height: 30px;
+        border-radius: 8px;
+        display: grid;
+        place-items: center;
+        background: rgba(103,167,255,.13);
+        color: var(--blue);
+      }
+      .progress {
+        height: 7px;
+        border-radius: 999px;
+        overflow: hidden;
+        background: rgba(255,255,255,.08);
+        margin-top: 9px;
+      }
+      .progress > i {
+        display: block;
+        width: 72%;
+        height: 100%;
+        background: linear-gradient(90deg, var(--green), var(--blue));
+      }
+
+      .terminal {
+        min-height: 290px;
+        padding: 12px;
+        border-radius: 8px;
+        background: #050709;
+        border: 1px solid rgba(255,255,255,.08);
+        color: #d5f7e8;
+        font: 12px/1.55 "SF Mono", ui-monospace, Menlo, monospace;
+        overflow: hidden;
+      }
+      .terminal div { white-space: pre-wrap; }
+      .term-dim { color: #6f7f7d; }
+      .term-ok { color: #35d49a; }
+      .term-blue { color: #82b3ff; }
+
+      .keybar {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 7px;
+      }
+      .keybar button, .primary, .secondary, .danger {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        height: 34px;
+        color: var(--soft);
+        background: rgba(255,255,255,.055);
+      }
+      .primary {
+        color: #06120f;
+        border-color: transparent;
+        background: var(--green);
+        font-weight: 700;
+      }
+      .danger { color: var(--red); }
+
+      .chat {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+      .msg {
+        max-width: 92%;
+        padding: 10px 12px;
+        border-radius: 8px;
+        border: 1px solid var(--line);
+        background: rgba(255,255,255,.045);
+        font-size: 13px;
+        line-height: 1.48;
+      }
+      .msg.user {
+        align-self: flex-end;
+        color: #05110e;
+        border-color: transparent;
+        background: var(--green);
+      }
+      .msg.agent { align-self: flex-start; }
+      .chips {
+        display: flex;
+        gap: 6px;
+        flex-wrap: wrap;
+      }
+      .chip {
+        padding: 6px 9px;
+        border-radius: 999px;
+        border: 1px solid var(--line);
+        color: var(--muted);
+        font-size: 11px;
+        background: rgba(255,255,255,.035);
+      }
+      .chip.active { color: var(--blue); border-color: rgba(103,167,255,.34); }
+
+      .steps {
+        display: grid;
+        gap: 8px;
+      }
+      .step {
+        display: grid;
+        grid-template-columns: 22px 1fr auto;
+        gap: 8px;
+        align-items: center;
+        color: var(--soft);
+        font-size: 12px;
+      }
+      .check {
+        width: 22px;
+        height: 22px;
+        border-radius: 7px;
+        display: grid;
+        place-items: center;
+        color: #06120f;
+        background: var(--green);
+        font-weight: 800;
+      }
+      .pending {
+        color: var(--amber);
+        background: rgba(244,185,95,.14);
+      }
+
+      .diff {
+        display: grid;
+        gap: 5px;
+        padding: 10px;
+        border-radius: 8px;
+        background: #070a0d;
+        font: 11px/1.5 "SF Mono", ui-monospace, Menlo, monospace;
+      }
+      .add { color: #53daa4; }
+      .del { color: #ff8a8a; }
+      .ctx { color: #7d8a96; }
+      .approval-actions {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+      }
+
+      .metric-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+      }
+      .metric {
+        min-height: 68px;
+        padding: 10px;
+        border-radius: 8px;
+        border: 1px solid var(--line);
+        background: var(--panel-2);
+      }
+      .metric b {
+        display: block;
+        margin-bottom: 5px;
+        font-size: 16px;
+      }
+      .audit {
+        display: grid;
+        gap: 8px;
+      }
+      .audit-row {
+        display: grid;
+        grid-template-columns: auto 1fr;
+        gap: 9px;
+        align-items: start;
+        color: var(--soft);
+        font-size: 12px;
+      }
+      .audit-time { color: var(--muted); font-size: 11px; }
+
+      .demo-note {
+        margin-top: 16px;
+        padding: 12px 14px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        color: var(--muted);
+        background: rgba(255,255,255,.035);
+        font-size: 13px;
+        line-height: 1.6;
+      }
+
+      @media (max-width: 980px) {
+        .topbar { align-items: flex-start; flex-direction: column; }
+        .shell {
+          display: flex;
+          gap: 14px;
+          overflow-x: auto;
+          scroll-snap-type: x mandatory;
+          padding-bottom: 8px;
+        }
+        .phone {
+          flex: 0 0 min(88vw, 390px);
+          scroll-snap-align: center;
+        }
+        .screen { min-height: 690px; }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="page">
+      <header class="topbar">
+        <div class="brand">
+          <div class="eyebrow"><span class="pulse"></span> TinyConnect Agent Console</div>
+          <h1>手机上的 Codex / Claude 控制器</h1>
+          <p class="sub">手机派活、查看终端、审批高风险命令，最后收 PR、CI 和部署结果。</p>
+        </div>
+        <div class="mode-switch" aria-label="模型选择">
+          <button class="active" type="button">Codex</button>
+          <button type="button">Claude</button>
+          <button type="button">GPT</button>
+        </div>
+      </header>
+
+      <section class="shell" aria-label="三阶段演示">
+        <article class="phone">
+          <div class="screen">
+            <div class="screen-head">
+              <div class="screen-title">
+                <strong>TinyConnect 控制台</strong>
+                <span>prod-mbp · tmux: tc</span>
+              </div>
+              <span class="badge ok"><span class="dot"></span>Connected</span>
+            </div>
+            <div class="content">
+              <section class="card card-pad">
+                <div class="task">
+                  <div class="task-icon">⌘</div>
+                  <div>
+                    <strong>修复移动端滚动</strong>
+                    <div class="muted tiny">Codex 正在修改 public/client.js</div>
+                  </div>
+                  <span class="badge warn">Running</span>
+                </div>
+                <div class="progress"><i></i></div>
+              </section>
+
+              <section class="terminal" data-terminal-stream>
+                <div><span class="term-dim">$</span> codex "修复手机滚动并推送 PR"</div>
+                <div class="term-blue">→ inspecting touch handlers...</div>
+                <div class="term-blue">→ patching mobile scroller...</div>
+                <div><span class="term-dim">$</span> npm test</div>
+                <div class="term-ok">✔ mobile terminal drag gestures use pixel scroll</div>
+                <div class="term-ok">✔ tests 25 / pass 25</div>
+                <div class="term-dim">waiting for approval: git push origin main</div>
+              </section>
+
+              <div class="keybar" aria-label="快捷键">
+                <button type="button">Ctrl-C</button>
+                <button type="button">Esc</button>
+                <button type="button">Paste</button>
+                <button type="button">Files</button>
+              </div>
+
+              <section class="card card-pad">
+                <div class="card-head">
+                  <h2 class="card-title">实时状态</h2>
+                  <span class="badge ok">Healthy</span>
+                </div>
+                <div class="metric-grid">
+                  <div class="metric"><b>25/25</b><span class="muted tiny">测试通过</span></div>
+                  <div class="metric"><b>2 files</b><span class="muted tiny">等待提交</span></div>
+                </div>
+              </section>
+            </div>
+          </div>
+        </article>
+
+        <article class="phone">
+          <div class="screen">
+            <div class="screen-head">
+              <div class="screen-title">
+                <strong>AI 任务编排</strong>
+                <span>LibreChat / MCP / TinyConnect</span>
+              </div>
+              <span class="badge">3 agents</span>
+            </div>
+            <div class="content">
+              <div class="chips" aria-label="模型">
+                <span class="chip active">Codex</span>
+                <span class="chip">Claude Code</span>
+                <span class="chip">GPT-5</span>
+                <span class="chip">MCP: tiny-connect</span>
+              </div>
+
+              <section class="chat">
+                <div class="msg user">帮我修复手机滚动不跟手，测试通过后创建 PR。</div>
+                <div class="msg agent">我会先复现触摸滚动问题，再把整行滚动改成像素级跟随，最后跑测试并等待你确认推送。</div>
+              </section>
+
+              <section class="card card-pad">
+                <div class="card-head">
+                  <h2 class="card-title">执行计划</h2>
+                  <span class="badge warn">Step 4/5</span>
+                </div>
+                <div class="steps">
+                  <div class="step"><span class="check">✓</span><span>读取终端滚动实现</span><span class="muted tiny">done</span></div>
+                  <div class="step"><span class="check">✓</span><span>写失败测试锁住手感问题</span><span class="muted tiny">done</span></div>
+                  <div class="step"><span class="check">✓</span><span>实现像素级滚动和合并输入</span><span class="muted tiny">done</span></div>
+                  <div class="step"><span class="check pending">!</span><span>等待确认 git push</span><span class="muted tiny">hold</span></div>
+                </div>
+              </section>
+
+              <section class="card card-pad">
+                <div class="card-head">
+                  <h2 class="card-title">任务队列</h2>
+                  <span class="badge ok">Live</span>
+                </div>
+                <div class="metric-grid">
+                  <div class="metric"><b>PR #42</b><span class="muted tiny">准备创建</span></div>
+                  <div class="metric"><b>CI</b><span class="muted tiny">待触发</span></div>
+                  <div class="metric"><b>tmux</b><span class="muted tiny">attached</span></div>
+                  <div class="metric"><b>Risk</b><span class="muted tiny">需要审批</span></div>
+                </div>
+              </section>
+            </div>
+          </div>
+        </article>
+
+        <article class="phone">
+          <div class="screen">
+            <div class="screen-head">
+              <div class="screen-title">
+                <strong>审批与交付</strong>
+                <span>安全闸门 · 审计日志</span>
+              </div>
+              <span class="badge warn">Approval</span>
+            </div>
+            <div class="content">
+              <section class="card card-pad">
+                <div class="card-head">
+                  <h2 class="card-title">等待确认</h2>
+                  <span class="badge warn">git push</span>
+                </div>
+                <div class="diff" aria-label="diff 预览">
+                  <div class="ctx">public/client.js</div>
+                  <div class="del">- term.scrollLines(lines)</div>
+                  <div class="add">+ viewport.scrollTop += deltaY</div>
+                  <div class="add">+ requestAnimationFrame(flushWheelInput)</div>
+                  <div class="ctx">test/profile-ui.test.js</div>
+                  <div class="add">+ pixel scroll and coalesced wheel input</div>
+                </div>
+                <div class="approval-actions" style="margin-top:10px">
+                  <button class="primary" type="button" data-action="approve">Approve</button>
+                  <button class="danger" type="button">Reject</button>
+                </div>
+              </section>
+
+              <section class="card card-pad">
+                <div class="card-head">
+                  <h2 class="card-title">交付状态</h2>
+                  <span class="badge ok">Ready</span>
+                </div>
+                <div class="metric-grid">
+                  <div class="metric"><b>25/25</b><span class="muted tiny">Tests passed</span></div>
+                  <div class="metric"><b>PR #42</b><span class="muted tiny">open</span></div>
+                  <div class="metric"><b>CI</b><span class="muted tiny">green</span></div>
+                  <div class="metric"><b>Deploy</b><span class="muted tiny">preview ready</span></div>
+                </div>
+              </section>
+
+              <section class="card card-pad">
+                <div class="card-head">
+                  <h2 class="card-title">审计日志</h2>
+                  <span class="badge">Secure</span>
+                </div>
+                <div class="audit">
+                  <div class="audit-row"><span class="dot" style="color:var(--green)"></span><div>测试完成 <div class="audit-time">02:18 · npm test</div></div></div>
+                  <div class="audit-row"><span class="dot" style="color:var(--amber)"></span><div>高风险命令拦截 <div class="audit-time">02:19 · git push origin main</div></div></div>
+                  <div class="audit-row"><span class="dot" style="color:var(--blue)"></span><div>等待手机确认 <div class="audit-time">02:19 · user approval required</div></div></div>
+                </div>
+              </section>
+            </div>
+          </div>
+        </article>
+      </section>
+
+      <p class="demo-note">
+        这是静态演示页：不连接真实 SSH、不执行命令。真实产品里，TinyConnect 负责终端和执行，LibreChat/MCP 负责 AI 任务编排，审批页负责阻断危险操作。
+      </p>
+    </main>
+
+    <script>
+      document.querySelectorAll('.mode-switch button').forEach((button) => {
+        button.addEventListener('click', () => {
+          document.querySelectorAll('.mode-switch button').forEach((item) => item.classList.remove('active'));
+          button.classList.add('active');
+        });
+      });
+
+      document.querySelector('[data-action="approve"]')?.addEventListener('click', (event) => {
+        event.currentTarget.textContent = 'Approved';
+      });
+    </script>
+  </body>
+</html>

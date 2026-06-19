@@ -132,18 +132,79 @@ export async function initializeSupabaseSchema(pool) {
       created_at TIMESTAMPTZ DEFAULT NOW()
     )
   `);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS agent_tasks (
+      id              TEXT PRIMARY KEY,
+      user_id         TEXT NOT NULL REFERENCES app_users(id) ON DELETE CASCADE,
+      title           TEXT NOT NULL,
+      kind            TEXT NOT NULL,
+      prompt          TEXT NOT NULL,
+      status          TEXT NOT NULL DEFAULT 'queued',
+      risk_level      TEXT NOT NULL DEFAULT 'safe',
+      tmux_session    TEXT,
+      model           TEXT,
+      project_path    TEXT,
+      output_tail     TEXT NOT NULL DEFAULT '',
+      metadata        JSONB NOT NULL DEFAULT '{}'::jsonb,
+      created_at      TIMESTAMPTZ DEFAULT NOW(),
+      updated_at      TIMESTAMPTZ DEFAULT NOW()
+    )
+  `);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS agent_approvals (
+      id           TEXT PRIMARY KEY,
+      task_id      TEXT NOT NULL REFERENCES agent_tasks(id) ON DELETE CASCADE,
+      user_id      TEXT NOT NULL REFERENCES app_users(id) ON DELETE CASCADE,
+      status       TEXT NOT NULL DEFAULT 'pending',
+      risk_level   TEXT NOT NULL DEFAULT 'high',
+      command      TEXT NOT NULL DEFAULT '',
+      reason       TEXT NOT NULL DEFAULT '',
+      diff_summary TEXT NOT NULL DEFAULT '',
+      requested_at TIMESTAMPTZ DEFAULT NOW(),
+      resolved_at  TIMESTAMPTZ
+    )
+  `);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS agent_delivery (
+      task_id           TEXT PRIMARY KEY REFERENCES agent_tasks(id) ON DELETE CASCADE,
+      user_id           TEXT NOT NULL REFERENCES app_users(id) ON DELETE CASCADE,
+      pr_url            TEXT NOT NULL DEFAULT '',
+      ci_status         TEXT NOT NULL DEFAULT 'unknown',
+      deployment_status TEXT NOT NULL DEFAULT 'none',
+      summary           TEXT NOT NULL DEFAULT '',
+      updated_at        TIMESTAMPTZ DEFAULT NOW()
+    )
+  `);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS agent_audit_logs (
+      id         TEXT PRIMARY KEY,
+      task_id    TEXT,
+      user_id    TEXT NOT NULL REFERENCES app_users(id) ON DELETE CASCADE,
+      event      TEXT NOT NULL,
+      message    TEXT NOT NULL DEFAULT '',
+      meta       JSONB NOT NULL DEFAULT '{}'::jsonb,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    )
+  `);
   await pool.query('CREATE UNIQUE INDEX IF NOT EXISTS user_devices_fp_idx ON user_devices(device_fingerprint)');
   await pool.query('CREATE INDEX IF NOT EXISTS ssh_keys_user_idx ON ssh_keys(user_id, created_at ASC)');
   await pool.query('CREATE UNIQUE INDEX IF NOT EXISTS conn_profiles_user_name_uidx ON connection_profiles(user_id, name)');
   await pool.query('CREATE INDEX IF NOT EXISTS conn_profiles_user_idx ON connection_profiles(user_id, created_at ASC)');
   await pool.query('CREATE INDEX IF NOT EXISTS connection_logs_user_created_idx ON connection_logs(user_id, created_at DESC)');
+  await pool.query('CREATE INDEX IF NOT EXISTS agent_tasks_user_status_idx ON agent_tasks(user_id, status, updated_at DESC)');
+  await pool.query('CREATE INDEX IF NOT EXISTS agent_approvals_user_status_idx ON agent_approvals(user_id, status, requested_at DESC)');
+  await pool.query('CREATE INDEX IF NOT EXISTS agent_audit_user_task_idx ON agent_audit_logs(user_id, task_id, created_at DESC)');
   await enablePermissiveRls(pool, [
     'app_users',
     'user_devices',
     'tiny_connect_user_settings',
     'ssh_keys',
     'connection_profiles',
-    'connection_logs'
+    'connection_logs',
+    'agent_tasks',
+    'agent_approvals',
+    'agent_delivery',
+    'agent_audit_logs'
   ]);
 
   _readyPools.add(pool);
@@ -536,6 +597,234 @@ export function createSupabaseActivityStore() {
         createdAt: row.created_at
       }));
     }
+  };
+}
+
+export function createSupabaseAgentStore() {
+  return {
+    async init() {
+      await ensureTables();
+    },
+
+    async createTask(input) {
+      const row = {
+        id: input.id || `task_${randomUUID()}`,
+        user_id: requireUserId(input),
+        title: sanitizeLogText(input.title || input.prompt || 'Untitled task', 160),
+        kind: sanitizeLogText(input.kind || 'codex', 24),
+        prompt: sanitizeLogText(input.prompt || '', 4000),
+        status: sanitizeLogText(input.status || 'queued', 40),
+        risk_level: sanitizeLogText(input.riskLevel || 'safe', 24),
+        tmux_session: sanitizeLogText(input.tmuxSession || '', 120),
+        model: sanitizeLogText(input.model || '', 120),
+        project_path: sanitizeLogText(input.projectPath || '', 500),
+        output_tail: sanitizeLogText(input.outputTail || '', 12000),
+        metadata: sanitizeLogMeta(input.metadata || {})
+      };
+      await sbCheck(await sb().from('agent_tasks').insert(row), 'insert agent_tasks');
+      await this.updateDelivery({ userId: row.user_id, taskId: row.id, patch: {} });
+      return toAgentTask(row);
+    },
+
+    async listTasks({ userId }) {
+      const result = await sb().from('agent_tasks')
+        .select('*')
+        .eq('user_id', requireUserId({ userId }))
+        .order('created_at', { ascending: false });
+      if (result.error) throw new Error(result.error.message);
+      return (result.data || []).map(toAgentTask);
+    },
+
+    async getTask({ userId, taskId }) {
+      const result = await sb().from('agent_tasks')
+        .select('*')
+        .eq('user_id', requireUserId({ userId }))
+        .eq('id', taskId)
+        .maybeSingle();
+      if (result.error) throw new Error(result.error.message);
+      if (!result.data) throw new Error('task not found');
+      return toAgentTask(result.data);
+    },
+
+    async updateTask({ userId, taskId, patch }) {
+      const row = agentTaskPatch(patch || {});
+      row.updated_at = new Date().toISOString();
+      const result = await sb().from('agent_tasks')
+        .update(row)
+        .eq('user_id', requireUserId({ userId }))
+        .eq('id', taskId)
+        .select('*')
+        .maybeSingle();
+      if (result.error) throw new Error(result.error.message);
+      if (!result.data) throw new Error('task not found');
+      return toAgentTask(result.data);
+    },
+
+    async appendOutput({ userId, taskId, chunk }) {
+      const task = await this.getTask({ userId, taskId });
+      const next = `${task.outputTail || ''}${String(chunk)}`.slice(-12000);
+      await this.updateTask({ userId, taskId, patch: { outputTail: next } });
+      return next;
+    },
+
+    async createApproval(input) {
+      const row = {
+        id: input.id || `approval_${randomUUID()}`,
+        task_id: input.taskId,
+        user_id: requireUserId(input),
+        status: input.status || 'pending',
+        risk_level: input.riskLevel || 'high',
+        command: sanitizeLogText(input.command || '', 4000),
+        reason: sanitizeLogText(input.reason || '', 1000),
+        diff_summary: sanitizeLogText(input.diffSummary || '', 4000)
+      };
+      await sbCheck(await sb().from('agent_approvals').insert(row), 'insert agent_approvals');
+      return toAgentApproval(row);
+    },
+
+    async listApprovals({ userId, status } = {}) {
+      let query = sb().from('agent_approvals')
+        .select('*')
+        .eq('user_id', requireUserId({ userId }))
+        .order('requested_at', { ascending: false });
+      if (status) query = query.eq('status', status);
+      const result = await query;
+      if (result.error) throw new Error(result.error.message);
+      return (result.data || []).map(toAgentApproval);
+    },
+
+    async resolveApproval({ userId, approvalId, status }) {
+      const result = await sb().from('agent_approvals')
+        .update({ status, resolved_at: new Date().toISOString() })
+        .eq('user_id', requireUserId({ userId }))
+        .eq('id', approvalId)
+        .select('*')
+        .maybeSingle();
+      if (result.error) throw new Error(result.error.message);
+      if (!result.data) throw new Error('approval not found');
+      return toAgentApproval(result.data);
+    },
+
+    async getDelivery({ userId, taskId }) {
+      const result = await sb().from('agent_delivery')
+        .select('*')
+        .eq('user_id', requireUserId({ userId }))
+        .eq('task_id', taskId)
+        .maybeSingle();
+      if (result.error) throw new Error(result.error.message);
+      return result.data ? toAgentDelivery(result.data) : null;
+    },
+
+    async updateDelivery({ userId, taskId, patch }) {
+      const row = {
+        task_id: taskId,
+        user_id: requireUserId({ userId }),
+        pr_url: sanitizeLogText(patch?.prUrl || patch?.pr_url || '', 1000),
+        ci_status: sanitizeLogText(patch?.ciStatus || patch?.ci_status || 'unknown', 40),
+        deployment_status: sanitizeLogText(patch?.deploymentStatus || patch?.deployment_status || 'none', 40),
+        summary: sanitizeLogText(patch?.summary || '', 1000),
+        updated_at: new Date().toISOString()
+      };
+      await sbCheck(
+        await sb().from('agent_delivery').upsert(row, { onConflict: 'task_id' }),
+        'upsert agent_delivery'
+      );
+      return this.getDelivery({ userId, taskId });
+    },
+
+    async logAudit({ userId, taskId, event, message = '', meta = {} }) {
+      const row = {
+        id: `audit_${randomUUID()}`,
+        task_id: taskId || null,
+        user_id: requireUserId({ userId }),
+        event: sanitizeLogText(event, 120),
+        message: sanitizeLogText(message, 1000),
+        meta: sanitizeLogMeta(meta)
+      };
+      await sbCheck(await sb().from('agent_audit_logs').insert(row), 'insert agent_audit_logs');
+      return toAgentAudit(row);
+    },
+
+    async listAuditLogs({ userId, taskId } = {}) {
+      let query = sb().from('agent_audit_logs')
+        .select('*')
+        .eq('user_id', requireUserId({ userId }))
+        .order('created_at', { ascending: false });
+      if (taskId) query = query.eq('task_id', taskId);
+      const result = await query;
+      if (result.error) throw new Error(result.error.message);
+      return (result.data || []).map(toAgentAudit);
+    }
+  };
+}
+
+function toAgentTask(row) {
+  return {
+    id: row.id,
+    userId: row.user_id,
+    title: row.title,
+    kind: row.kind,
+    prompt: row.prompt,
+    status: row.status,
+    riskLevel: row.risk_level,
+    tmuxSession: row.tmux_session || '',
+    model: row.model || '',
+    projectPath: row.project_path || '',
+    outputTail: row.output_tail || '',
+    metadata: row.metadata || {},
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
+  };
+}
+
+function agentTaskPatch(patch) {
+  const row = {};
+  if ('status' in patch) row.status = sanitizeLogText(patch.status, 40);
+  if ('riskLevel' in patch) row.risk_level = sanitizeLogText(patch.riskLevel, 24);
+  if ('tmuxSession' in patch) row.tmux_session = sanitizeLogText(patch.tmuxSession, 120);
+  if ('outputTail' in patch) row.output_tail = sanitizeLogText(patch.outputTail, 12000);
+  if ('runnerCommand' in patch) row.metadata = sanitizeLogMeta({ runnerCommand: patch.runnerCommand });
+  if ('error' in patch) row.metadata = sanitizeLogMeta({ error: patch.error });
+  if ('exitCode' in patch) row.metadata = sanitizeLogMeta({ exitCode: patch.exitCode });
+  return row;
+}
+
+function toAgentApproval(row) {
+  return {
+    id: row.id,
+    taskId: row.task_id,
+    userId: row.user_id,
+    status: row.status,
+    riskLevel: row.risk_level,
+    command: row.command || '',
+    reason: row.reason || '',
+    diffSummary: row.diff_summary || '',
+    requestedAt: row.requested_at,
+    resolvedAt: row.resolved_at || null
+  };
+}
+
+function toAgentDelivery(row) {
+  return {
+    taskId: row.task_id,
+    userId: row.user_id,
+    prUrl: row.pr_url || '',
+    ciStatus: row.ci_status || 'unknown',
+    deploymentStatus: row.deployment_status || 'none',
+    summary: row.summary || '',
+    updatedAt: row.updated_at
+  };
+}
+
+function toAgentAudit(row) {
+  return {
+    id: row.id,
+    taskId: row.task_id || null,
+    userId: row.user_id,
+    event: row.event,
+    message: row.message || '',
+    meta: row.meta || {},
+    createdAt: row.created_at
   };
 }
 

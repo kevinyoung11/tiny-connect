@@ -1,0 +1,160 @@
+import express from 'express';
+import { classifyRisk, normalizeTaskInput, requiresApproval, sanitizeTmuxName } from './agent-domain.js';
+
+export function createAgentRouter({ store, runner, getScope, mcpOnly = false } = {}) {
+  if (!store) throw new Error('store is required');
+  if (!runner) throw new Error('runner is required');
+  if (typeof getScope !== 'function') throw new Error('getScope is required');
+  const router = express.Router();
+
+  if (mcpOnly) {
+    router.post('/create_agent_task', asyncHandler(async (req, res) => {
+      const result = await createTaskFlow({ req, store, runner, getScope });
+      res.status(201).json(result);
+    }));
+    router.post('/list_agent_tasks', asyncHandler(async (req, res) => {
+      const scope = await getScope(req);
+      res.json({ tasks: await store.listTasks(scope) });
+    }));
+    router.post('/get_agent_task', asyncHandler(async (req, res) => {
+      const scope = await getScope(req);
+      res.json(await taskDetail({ store, scope, taskId: req.body?.taskId }));
+    }));
+    router.post('/list_pending_approvals', asyncHandler(async (req, res) => {
+      const scope = await getScope(req);
+      res.json({ approvals: await store.listApprovals({ ...scope, status: 'pending' }) });
+    }));
+    router.post('/resolve_approval', asyncHandler(async (req, res) => {
+      const result = await resolveApprovalFlow({ req, store, runner, getScope, approvalId: req.body?.approvalId });
+      res.json(result);
+    }));
+    return router;
+  }
+
+  router.get('/tasks', asyncHandler(async (req, res) => {
+    const scope = await getScope(req);
+    res.json({ tasks: await store.listTasks(scope) });
+  }));
+
+  router.get('/snapshot', asyncHandler(async (req, res) => {
+    const scope = await getScope(req);
+    const tasks = await store.listTasks(scope);
+    const approvals = await store.listApprovals({ ...scope, status: 'pending' });
+    res.json({ tasks, approvals });
+  }));
+
+  router.post('/tasks', asyncHandler(async (req, res) => {
+    const result = await createTaskFlow({ req, store, runner, getScope });
+    res.status(201).json(result);
+  }));
+
+  router.get('/tasks/:id', asyncHandler(async (req, res) => {
+    const scope = await getScope(req);
+    res.json(await taskDetail({ store, scope, taskId: req.params.id }));
+  }));
+
+  router.get('/tasks/:id/output', asyncHandler(async (req, res) => {
+    const scope = await getScope(req);
+    const task = await store.getTask({ ...scope, taskId: req.params.id });
+    res.json({ output: task.outputTail || '' });
+  }));
+
+  router.post('/tasks/:id/input', asyncHandler(async (req, res) => {
+    const scope = await getScope(req);
+    await store.appendOutput({ ...scope, taskId: req.params.id, chunk: req.body?.input || '' });
+    res.json({ ok: true });
+  }));
+
+  router.post('/tasks/:id/cancel', asyncHandler(async (req, res) => {
+    const scope = await getScope(req);
+    await runner.cancelTask({ ...scope, taskId: req.params.id });
+    res.json({ ok: true });
+  }));
+
+  router.get('/approvals', asyncHandler(async (req, res) => {
+    const scope = await getScope(req);
+    res.json({ approvals: await store.listApprovals({ ...scope, status: req.query.status || 'pending' }) });
+  }));
+
+  router.post('/approvals/:id/resolve', asyncHandler(async (req, res) => {
+    const result = await resolveApprovalFlow({ req, store, runner, getScope, approvalId: req.params.id });
+    res.json(result);
+  }));
+
+  router.get('/tasks/:id/delivery', asyncHandler(async (req, res) => {
+    const scope = await getScope(req);
+    res.json({ delivery: await store.getDelivery({ ...scope, taskId: req.params.id }) });
+  }));
+
+  router.post('/tasks/:id/delivery', asyncHandler(async (req, res) => {
+    const scope = await getScope(req);
+    const delivery = await store.updateDelivery({ ...scope, taskId: req.params.id, patch: req.body || {} });
+    res.json({ delivery });
+  }));
+
+  return router;
+}
+
+async function createTaskFlow({ req, store, runner, getScope }) {
+  const scope = await getScope(req);
+  const input = normalizeTaskInput(req.body || {});
+  const riskLevel = classifyRisk(`${input.prompt} ${req.body?.command || ''}`);
+  const status = requiresApproval(riskLevel) ? 'waiting_approval' : 'queued';
+  const task = await store.createTask({
+    ...scope,
+    ...input,
+    status,
+    riskLevel,
+    tmuxSession: `tc-${input.kind}-${sanitizeTmuxName(Date.now().toString(36))}`
+  });
+  await store.logAudit?.({ ...scope, taskId: task.id, event: 'task_created', message: input.title });
+
+  let approval = null;
+  if (requiresApproval(riskLevel)) {
+    approval = await store.createApproval({
+      ...scope,
+      taskId: task.id,
+      riskLevel,
+      command: input.prompt,
+      reason: `${riskLevel} risk requires mobile approval`,
+      diffSummary: req.body?.diffSummary || ''
+    });
+    await store.logAudit?.({ ...scope, taskId: task.id, event: 'approval_requested', message: approval.reason });
+  } else {
+    await runner.startTask({ ...scope, task });
+  }
+
+  return { task: await store.getTask({ ...scope, taskId: task.id }), approval };
+}
+
+async function resolveApprovalFlow({ req, store, runner, getScope, approvalId }) {
+  const scope = await getScope(req);
+  const status = req.body?.status === 'rejected' ? 'rejected' : 'approved';
+  const approval = await store.resolveApproval({ ...scope, approvalId, status });
+  const task = await store.getTask({ ...scope, taskId: approval.taskId });
+  if (status === 'approved') {
+    await store.updateTask({ ...scope, taskId: task.id, patch: { status: 'queued' } });
+    await runner.startTask({ ...scope, task: await store.getTask({ ...scope, taskId: task.id }) });
+  } else {
+    await store.updateTask({ ...scope, taskId: task.id, patch: { status: 'cancelled' } });
+  }
+  await store.logAudit?.({ ...scope, taskId: task.id, event: `approval_${status}`, message: approval.command });
+  return { approval, task: await store.getTask({ ...scope, taskId: task.id }) };
+}
+
+async function taskDetail({ store, scope, taskId }) {
+  const task = await store.getTask({ ...scope, taskId });
+  const approvals = await store.listApprovals({ ...scope });
+  const approval = approvals.find((item) => item.taskId === task.id && item.status === 'pending') || null;
+  const delivery = await store.getDelivery({ ...scope, taskId: task.id });
+  return { task, approval, delivery };
+}
+
+function asyncHandler(fn) {
+  return (req, res) => {
+    Promise.resolve(fn(req, res)).catch((error) => {
+      const status = /not found/i.test(error.message) ? 404 : 400;
+      res.status(status).json({ error: error.message });
+    });
+  };
+}

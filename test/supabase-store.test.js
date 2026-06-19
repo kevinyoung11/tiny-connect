@@ -47,15 +47,23 @@ test('initializes Supabase tables, indexes, and permissive RLS policies', async 
   assert.match(pool.sql(), /CREATE TABLE IF NOT EXISTS app_users/);
   assert.match(pool.sql(), /CREATE TABLE IF NOT EXISTS tiny_connect_user_settings/);
   assert.match(pool.sql(), /CREATE TABLE IF NOT EXISTS connection_logs/);
+  assert.match(pool.sql(), /CREATE TABLE IF NOT EXISTS agent_tasks/);
+  assert.match(pool.sql(), /CREATE TABLE IF NOT EXISTS agent_approvals/);
+  assert.match(pool.sql(), /CREATE TABLE IF NOT EXISTS agent_delivery/);
+  assert.match(pool.sql(), /CREATE TABLE IF NOT EXISTS agent_audit_logs/);
   assert.match(pool.sql(), /CREATE UNIQUE INDEX IF NOT EXISTS user_devices_fp_idx/);
   assert.match(pool.sql(), /CREATE UNIQUE INDEX IF NOT EXISTS conn_profiles_user_name_uidx/);
   assert.match(pool.sql(), /CREATE INDEX IF NOT EXISTS connection_logs_user_created_idx/);
+  assert.match(pool.sql(), /CREATE INDEX IF NOT EXISTS agent_tasks_user_status_idx/);
+  assert.match(pool.sql(), /CREATE INDEX IF NOT EXISTS agent_approvals_user_status_idx/);
+  assert.match(pool.sql(), /CREATE INDEX IF NOT EXISTS agent_audit_user_task_idx/);
   assert.match(pool.sql(), /ALTER TABLE app_users ENABLE ROW LEVEL SECURITY/);
   assert.match(pool.sql(), /CREATE POLICY "app_users_client_select" ON app_users FOR SELECT TO anon, authenticated USING \(true\)/);
   assert.match(pool.sql(), /CREATE POLICY "ssh_keys_client_insert" ON ssh_keys FOR INSERT TO anon, authenticated WITH CHECK \(true\)/);
   assert.match(pool.sql(), /CREATE POLICY "connection_profiles_client_update" ON connection_profiles FOR UPDATE TO anon, authenticated USING \(true\) WITH CHECK \(true\)/);
   assert.match(pool.sql(), /CREATE POLICY "connection_logs_client_select" ON connection_logs FOR SELECT TO anon, authenticated USING \(true\)/);
   assert.match(pool.sql(), /CREATE POLICY "tiny_connect_user_settings_client_delete" ON tiny_connect_user_settings FOR DELETE TO anon, authenticated USING \(true\)/);
+  assert.match(pool.sql(), /CREATE POLICY "agent_tasks_client_select" ON agent_tasks FOR SELECT TO anon, authenticated USING \(true\)/);
 });
 
 test('resolves local key cache paths under the owning user id', () => {

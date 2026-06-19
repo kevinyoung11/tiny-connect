@@ -1097,6 +1097,142 @@ label {
   word-break: break-word;
 }
 
+/* ─── Agent Console ─────────────────────────────────────────────────────── */
+.agent-sheet {
+  position: fixed;
+  right: max(12px, env(safe-area-inset-right));
+  top: max(72px, calc(var(--hud-h) + env(safe-area-inset-top) + 14px));
+  bottom: max(12px, env(safe-area-inset-bottom));
+  z-index: 35;
+  width: min(560px, calc(100dvw - 24px));
+  padding: 16px;
+  border: 1px solid var(--border-hi);
+  border-radius: var(--r-lg);
+  background: rgba(10,10,16,.98);
+  box-shadow: 0 30px 90px rgba(0,0,0,.62);
+  overflow-y: auto;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateX(16px);
+  transition: opacity .2s ease, transform .22s ease;
+  -webkit-overflow-scrolling: touch;
+}
+.agent-sheet.open {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateX(0);
+}
+.agent-subtitle {
+  margin-top: 4px;
+  color: var(--text-2);
+  font-size: 12px;
+}
+.agent-task-form {
+  display: grid;
+  grid-template-columns: 108px 1fr auto;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.agent-task-form .mini-btn { height: 42px; }
+.agent-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.agent-panel {
+  margin-bottom: 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: rgba(255,255,255,.035);
+  overflow: hidden;
+}
+.agent-panel-head {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text-2);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .5px;
+}
+.agent-list {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+}
+.agent-task-row,
+.agent-approval-card,
+.agent-delivery-card {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px;
+  background: rgba(255,255,255,.045);
+}
+.agent-task-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  cursor: pointer;
+}
+.agent-task-row.is-selected {
+  border-color: rgba(0,212,170,.36);
+  background: rgba(0,212,170,.08);
+}
+.agent-task-title,
+.agent-card-title {
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 650;
+}
+.agent-task-kind,
+.agent-empty-state,
+.agent-delivery-summary,
+.agent-approval-reason {
+  color: var(--text-2);
+  font-size: 12px;
+  line-height: 1.4;
+}
+.agent-task-meta,
+.agent-card-header,
+.agent-approval-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.agent-status,
+.agent-risk,
+.agent-ci-status {
+  display: inline-flex;
+  min-height: 22px;
+  align-items: center;
+  padding: 0 7px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--accent);
+  font-size: 11px;
+}
+.agent-approval-command,
+.agent-approval-diff,
+.agent-output-tail {
+  margin-top: 8px;
+  padding: 10px;
+  border-radius: 7px;
+  background: rgba(0,0,0,.28);
+  color: var(--text);
+  font: 12px/1.45 var(--mono);
+  white-space: pre-wrap;
+  overflow: auto;
+}
+.agent-output { padding: 10px; }
+.agent-output-tail { min-height: 140px; margin: 0; }
+.agent-delivery-link {
+  display: inline-flex;
+  margin-top: 8px;
+  color: var(--accent);
+  font-size: 12px;
+}
+
 /* ─── Toast notification ──────────────────────────────────────────────────── */
 .toast {
   position: fixed;
@@ -1161,6 +1297,18 @@ label {
     margin-right: -16px;
     padding-left: 16px;
     padding-right: 16px;
+  }
+  .hud-actions #agentBtn { display: inline-flex; }
+  .agent-sheet {
+    left: 8px;
+    right: 8px;
+    top: max(64px, calc(var(--hud-h) + env(safe-area-inset-top) + 10px));
+    width: auto;
+    padding: 14px;
+  }
+  .agent-task-form,
+  .agent-grid {
+    grid-template-columns: 1fr;
   }
   /* Keep mbar bottom safe area */
   .workspace.mbar-on {
