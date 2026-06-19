@@ -328,6 +328,35 @@ test('agent runner kills tmux backed sessions when cancelled', async () => {
   assert.equal((await store.getTask({ userId: 'user_1', taskId: task.id })).status, 'cancelled');
 });
 
+test('agent runner tolerates missing tmux while cancelling tmux backed sessions', async () => {
+  const store = createMemoryAgentStore();
+  const taskChild = createFakeChild();
+  const killChild = createFakeChild();
+  const runner = createAgentRunner({
+    store,
+    spawnImpl() {
+      return taskChild.started ? killChild : Object.assign(taskChild, { started: true });
+    }
+  });
+  const task = await store.createTask({
+    userId: 'user_1',
+    title: 'Codex',
+    kind: 'codex',
+    prompt: 'start work',
+    status: 'queued',
+    riskLevel: 'safe',
+    tmuxSession: 'tc-codex-cancel-missing-tmux'
+  });
+
+  await runner.startTask({ userId: 'user_1', task });
+  const cancelled = await runner.cancelTask({ userId: 'user_1', taskId: task.id });
+  killChild.emit('error', Object.assign(new Error('spawn tmux ENOENT'), { code: 'ENOENT' }));
+  await flushAsyncHandlers();
+
+  assert.deepEqual(cancelled, { ok: true });
+  assert.equal((await store.getTask({ userId: 'user_1', taskId: task.id })).status, 'cancelled');
+});
+
 test('agent runner captures tmux pane output after process map is gone', async () => {
   const store = createMemoryAgentStore();
   const captureChild = createFakeChild();

@@ -185,7 +185,10 @@ export function createAgentRunner({ store, spawnImpl = spawn, sshClientFactory =
     const task = await store.getTask({ userId, taskId });
     const child = processes.get(taskId);
     if (isTmuxBacked(task)) {
-      spawnImpl('tmux', ['kill-session', '-t', task.tmuxSession], { env: process.env });
+      const kill = spawnImpl('tmux', ['kill-session', '-t', task.tmuxSession], { env: process.env });
+      kill.on('error', (error) => {
+        store.logAudit?.({ userId, taskId, event: 'tmux_cancel_failed', message: error.message }).catch(() => {});
+      });
     } else if (child) {
       child.kill('SIGTERM');
     }

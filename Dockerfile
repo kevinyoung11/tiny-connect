@@ -1,7 +1,7 @@
 FROM node:22-alpine
 
-# python3 is required by pty_bridge.py; bash is used by agent runner commands.
-RUN apk add --no-cache python3 bash
+# python3 is required by pty_bridge.py; bash/tmux are used by agent runner commands.
+RUN apk add --no-cache python3 bash tmux
 
 WORKDIR /app
 

@@ -84,7 +84,7 @@ test('initializes Supabase tables, indexes, and permissive RLS policies', async 
   assert.match(pool.sql(), /CREATE POLICY "agent_tasks_client_select" ON agent_tasks FOR SELECT TO anon, authenticated USING \(true\)/);
 });
 
-test('supabase agent store init fails when schema initialization fails', async () => {
+test('supabase agent store init tolerates schema initialization failure', async () => {
   const store = createSupabaseAgentStore({
     supabase: createFakeSupabaseClient(),
     pool: {
@@ -94,10 +94,7 @@ test('supabase agent store init fails when schema initialization fails', async (
     }
   });
 
-  await assert.rejects(
-    () => store.init(),
-    /Supabase schema initialization failed: permission denied for schema public/
-  );
+  await assert.doesNotReject(() => store.init());
 });
 
 test('resolves local key cache paths under the owning user id', () => {

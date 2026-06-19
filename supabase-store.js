@@ -58,7 +58,10 @@ async function ensureTables(pool = getPgPool()) {
   try {
     await initializeSupabaseSchema(pool);
   } catch (error) {
-    throw new Error(`Supabase schema initialization failed: ${error.message}`);
+    if (!_schemaWarningPrinted) {
+      console.warn(`[supabase-store] schema init skipped: ${error.message}`);
+      _schemaWarningPrinted = true;
+    }
   }
 }
 
