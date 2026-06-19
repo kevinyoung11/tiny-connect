@@ -24,6 +24,7 @@ test('main page exposes agent console shell and module import', () => {
   assert.match(js, /initAgentConsole\(/);
   assert.match(agentConsole, /data-task-action/);
   assert.match(agentConsole, /api\.cancelTask\(/);
+  assert.match(agentConsole, /toast\(error\.message,\s*'err'\)/);
   assert.match(agentConsole, /model:\s*modelInput\.value\.trim\(\)/);
   assert.match(agentConsole, /projectPath:\s*projectPathInput\.value\.trim\(\)/);
   assert.match(css, /\.agent-sheet/);

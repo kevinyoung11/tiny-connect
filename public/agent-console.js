@@ -93,9 +93,14 @@ export function initAgentConsole({ withIdentity = (init) => init, toast = () => 
     event.preventDefault();
     const input = taskInput?.value || '';
     if (!selectedTaskId || !input.trim()) return;
-    await api.sendInput(selectedTaskId, input);
-    taskInput.value = '';
-    await refresh();
+    try {
+      await api.sendInput(selectedTaskId, input);
+      taskInput.value = '';
+    } catch (error) {
+      toast(error.message, 'err');
+    } finally {
+      await refresh();
+    }
   });
 
   return { open, close, refresh };
