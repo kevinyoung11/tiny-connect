@@ -1,6 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
+import { mkdtempSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { createMemoryAgentStore } from '../agent-store.js';
 import { createAgentRunner } from '../agent-runner.js';
 
@@ -34,6 +37,69 @@ test('agent runner starts a task and records successful output', async () => {
   assert.deepEqual(spawned, [{ command: 'bash', args: ['-lc', 'echo ok'] }]);
   assert.equal(updated.status, 'completed');
   assert.equal(updated.outputTail, 'ok\n');
+});
+
+test('agent runner executes tasks through the selected ssh profile', async () => {
+  const store = createMemoryAgentStore();
+  const ssh = createFakeSshClient();
+  const connections = [];
+  const keyPath = join(mkdtempSync(join(tmpdir(), 'tiny-connect-agent-')), 'key.pem');
+  writeFileSync(keyPath, 'PRIVATE KEY');
+  const runner = createAgentRunner({
+    store,
+    sshClientFactory: () => ssh,
+    profileStore: {
+      async listProfiles() {
+        return [{
+          id: 'profile_1',
+          host: 'dev.example.com',
+          port: 2222,
+          username: 'deploy',
+          keyId: 'key_1',
+          passphrase: 'secret'
+        }];
+      }
+    },
+    keyStore: {
+      async getPrivateKeyPath(keyId, scope) {
+        connections.push({ keyId, scope });
+        return keyPath;
+      }
+    }
+  });
+  const task = await store.createTask({
+    userId: 'user_1',
+    title: 'Remote',
+    kind: 'shell',
+    prompt: 'echo remote',
+    status: 'queued',
+    riskLevel: 'safe',
+    metadata: { profileId: 'profile_1' }
+  });
+
+  const started = runner.startTask({ userId: 'user_1', task });
+  await flushAsyncHandlers();
+  assert.deepEqual(ssh.connectOptions, {
+    host: 'dev.example.com',
+    port: 2222,
+    username: 'deploy',
+    privateKey: Buffer.from('PRIVATE KEY'),
+    passphrase: 'secret'
+  });
+  ssh.emit('ready');
+  await flushAsyncHandlers();
+  assert.equal(ssh.execCommand, "bash '-lc' 'echo remote'");
+  ssh.execStream.emit('data', Buffer.from('remote\n'));
+  ssh.execStream.stderr.emit('data', Buffer.from('warn\n'));
+  ssh.execStream.emit('close', 0);
+  await started;
+
+  const updated = await store.getTask({ userId: 'user_1', taskId: task.id });
+  assert.equal(updated.status, 'completed');
+  assert.equal(updated.outputTail, 'remote\nwarn\n');
+  assert.equal(updated.runnerCommand, 'ssh:dev.example.com');
+  assert.equal(ssh.ended, true);
+  assert.deepEqual(connections, [{ keyId: 'key_1', scope: { userId: 'user_1' } }]);
 });
 
 test('agent runner keeps cancelled status when killed task exits later', async () => {
@@ -417,6 +483,23 @@ function createFakeChild() {
     child.killedWith = signal;
   };
   return child;
+}
+
+function createFakeSshClient() {
+  const client = new EventEmitter();
+  client.execStream = new EventEmitter();
+  client.execStream.stderr = new EventEmitter();
+  client.connect = (options) => {
+    client.connectOptions = options;
+  };
+  client.exec = (command, callback) => {
+    client.execCommand = command;
+    callback(null, client.execStream);
+  };
+  client.end = () => {
+    client.ended = true;
+  };
+  return client;
 }
 
 async function flushAsyncHandlers() {

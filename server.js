@@ -39,7 +39,7 @@ const profileStore = createSupabaseProfileStore();
 const userStore = createSupabaseUserStore();
 const activityStore = createSupabaseActivityStore();
 const agentStore = supabaseConfigured ? createSupabaseAgentStore() : createMemoryAgentStore();
-const agentRunner = createAgentRunner({ store: agentStore });
+const agentRunner = createAgentRunner({ store: agentStore, profileStore, keyStore });
 let storesReadyPromise = null;
 
 // sessionId → { client, config, stream, ws, cleanupTimer, settings }

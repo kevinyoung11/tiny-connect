@@ -14,6 +14,7 @@ export function initAgentConsole({ withIdentity = (init) => init, toast = () => 
   const inputForm = document.querySelector('#agentInputForm');
   const startButton = form?.querySelector('button[type="submit"]');
   const sendButton = inputForm?.querySelector('button[type="submit"]');
+  const profileInput = document.querySelector('#agentProfile');
   const kindInput = document.querySelector('#agentKind');
   const modelInput = document.querySelector('#agentModel');
   const projectPathInput = document.querySelector('#agentProjectPath');
@@ -28,6 +29,7 @@ export function initAgentConsole({ withIdentity = (init) => init, toast = () => 
   const api = createAgentApi({ withIdentity });
   let selectedTaskId = '';
   let pollTimer = null;
+  let profilesLoaded = false;
 
   async function refresh() {
     const shouldFollowOutput = isNearBottom(output);
@@ -46,6 +48,7 @@ export function initAgentConsole({ withIdentity = (init) => init, toast = () => 
   function open() {
     sheet.removeAttribute('hidden');
     requestAnimationFrame(() => sheet.classList.add('open'));
+    loadProfiles().catch((error) => toast(error.message, 'err'));
     refresh().catch((error) => toast(error.message, 'err'));
     clearInterval(pollTimer);
     pollTimer = setInterval(() => refresh().catch(() => {}), 4000);
@@ -86,6 +89,11 @@ export function initAgentConsole({ withIdentity = (init) => init, toast = () => 
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
     const prompt = promptInput.value.trim();
+    const profileId = profileInput?.value || '';
+    if (!profileId) {
+      toast('Select an SSH host first.', 'err');
+      return;
+    }
     if (!prompt) {
       toast('Task prompt is required.', 'err');
       return;
@@ -94,6 +102,7 @@ export function initAgentConsole({ withIdentity = (init) => init, toast = () => 
     try {
       const result = await api.startTask({
         kind: kindInput.value,
+        profileId,
         prompt,
         title: prompt,
         model: modelInput.value.trim(),
@@ -136,6 +145,22 @@ export function initAgentConsole({ withIdentity = (init) => init, toast = () => 
   });
 
   return { open, close, refresh };
+
+  async function loadProfiles() {
+    if (!profileInput || profilesLoaded) return;
+    const response = await fetch('/api/profiles', withIdentity({}));
+    const body = await response.json();
+    if (!response.ok) throw new Error(body.error || 'Failed to load SSH hosts');
+    const profiles = body.profiles || [];
+    profileInput.innerHTML = '<option value="">Select SSH host</option>';
+    for (const profile of profiles) {
+      const option = document.createElement('option');
+      option.value = profile.id;
+      option.textContent = profile.name || `${profile.username}@${profile.host}`;
+      profileInput.append(option);
+    }
+    profilesLoaded = true;
+  }
 }
 
 function isNearBottom(element, threshold = 24) {

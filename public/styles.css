@@ -1162,7 +1162,7 @@ label {
 }
 .agent-task-form {
   display: grid;
-  grid-template-columns: 108px minmax(118px, .7fr) minmax(180px, 1fr) minmax(260px, 1.8fr) auto;
+  grid-template-columns: minmax(150px, 1fr) 108px minmax(118px, .7fr) minmax(180px, 1fr) minmax(260px, 1.8fr) auto;
   gap: 8px;
   margin-bottom: 12px;
 }

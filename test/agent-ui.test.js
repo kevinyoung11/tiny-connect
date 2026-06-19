@@ -31,7 +31,7 @@ test('agent api fetches snapshot and posts task or approval actions', async () =
   });
 
   assert.deepEqual(await api.fetchSnapshot(), { ok: true, url: '/api/agent/snapshot' });
-  await api.startTask({ kind: 'codex', prompt: 'fix bug' });
+  await api.startTask({ kind: 'codex', profileId: 'profile_1', prompt: 'fix bug' });
   await api.resolveApproval('approval_1', 'approved');
   await api.sendInput('task_1', 'continue\n');
   await api.cancelTask('task_1');
@@ -44,7 +44,7 @@ test('agent api fetches snapshot and posts task or approval actions', async () =
     ['/api/agent/tasks/task_1/cancel', 'POST']
   ]);
   assert.equal(calls[1].init.headers.get('Content-Type'), 'application/json');
-  assert.equal(calls[1].init.body, JSON.stringify({ kind: 'codex', prompt: 'fix bug' }));
+  assert.equal(calls[1].init.body, JSON.stringify({ kind: 'codex', profileId: 'profile_1', prompt: 'fix bug' }));
   assert.equal(calls[1].init.identity, true);
   assert.equal(calls[2].init.body, JSON.stringify({ status: 'approved' }));
   assert.equal(calls[3].init.body, JSON.stringify({ input: 'continue\n' }));

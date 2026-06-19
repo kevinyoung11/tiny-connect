@@ -1,13 +1,18 @@
 import { spawn } from 'node:child_process';
+import fs from 'node:fs';
+import { Client } from 'ssh2';
 import { buildRunnerCommand, buildTmuxRunnerCommand } from './agent-domain.js';
 
-export function createAgentRunner({ store, spawnImpl = spawn } = {}) {
+export function createAgentRunner({ store, spawnImpl = spawn, sshClientFactory = () => new Client(), profileStore, keyStore } = {}) {
   if (!store) throw new Error('store is required');
   const processes = new Map();
 
   async function startTask({ userId, task }) {
     if (!userId) throw new Error('userId is required');
     if (!task?.id) throw new Error('task is required');
+    if (task.metadata?.profileId) {
+      return startSshTask({ userId, task });
+    }
     const commandSpec = buildStartCommand(task);
     await store.updateTask({ userId, taskId: task.id, patch: { status: 'running', runnerCommand: commandSpec.command } });
     await store.logAudit?.({ userId, taskId: task.id, event: 'runner_started', message: commandSpec.command });
@@ -45,6 +50,87 @@ export function createAgentRunner({ store, spawnImpl = spawn } = {}) {
     });
 
     return { pid: child.pid || null };
+  }
+
+  async function startSshTask({ userId, task }) {
+    if (!profileStore) throw new Error('profileStore is required for SSH agent tasks');
+    if (!keyStore) throw new Error('keyStore is required for SSH agent tasks');
+    const profile = await getProfile({ userId, profileId: task.metadata.profileId });
+    const privateKeyPath = profile.keyId
+      ? await keyStore.getPrivateKeyPath(profile.keyId, { userId })
+      : undefined;
+    const privateKey = privateKeyPath ? fs.readFileSync(privateKeyPath) : undefined;
+    const commandLine = buildRemoteCommandLine(task);
+    await store.updateTask({
+      userId,
+      taskId: task.id,
+      patch: {
+        status: 'running',
+        runnerCommand: `ssh:${profile.host}`,
+        metadata: { ...(task.metadata || {}), sshHost: profile.host, sshUsername: profile.username }
+      }
+    });
+    await store.logAudit?.({ userId, taskId: task.id, event: 'runner_started', message: `ssh:${profile.host}` });
+    try {
+      await runSshExec({
+        profile,
+        privateKey,
+        commandLine,
+        onOutput: (chunk) => store.appendOutput({ userId, taskId: task.id, chunk: chunk.toString('utf8') })
+      });
+      const latest = await store.getTask({ userId, taskId: task.id });
+      if (latest.status !== 'cancelled') {
+        await store.updateTask({ userId, taskId: task.id, patch: { status: 'completed', exitCode: 0 } });
+        await store.logAudit?.({ userId, taskId: task.id, event: 'task_completed', message: 'ssh command completed' });
+      }
+    } catch (error) {
+      await store.updateTask({ userId, taskId: task.id, patch: { status: 'failed', error: error.message } });
+      await store.logAudit?.({ userId, taskId: task.id, event: 'task_failed', message: error.message });
+      throw error;
+    }
+    return { pid: null };
+  }
+
+  async function getProfile({ userId, profileId }) {
+    const profiles = await profileStore.listProfiles({ userId });
+    const profile = profiles.find((item) => item.id === profileId);
+    if (!profile) throw new Error('SSH profile not found');
+    return profile;
+  }
+
+  function runSshExec({ profile, privateKey, commandLine, onOutput }) {
+    return new Promise((resolve, reject) => {
+      const client = sshClientFactory();
+      let settled = false;
+      const finish = (error) => {
+        if (settled) return;
+        settled = true;
+        try { client.end(); } catch (_) {}
+        error ? reject(error) : resolve();
+      };
+      client.on('ready', () => {
+        client.exec(commandLine, (error, stream) => {
+          if (error) {
+            finish(error);
+            return;
+          }
+          stream.on('data', (chunk) => onOutput(chunk).catch(() => {}));
+          stream.stderr?.on('data', (chunk) => onOutput(chunk).catch(() => {}));
+          stream.on('close', (code) => {
+            if (code === 0) finish();
+            else finish(new Error(`remote command exited ${code}`));
+          });
+        });
+      });
+      client.on('error', finish);
+      client.connect({
+        host: profile.host,
+        port: Number(profile.port) || 22,
+        username: profile.username,
+        privateKey,
+        passphrase: profile.passphrase || undefined
+      });
+    });
   }
 
   async function sendInput({ userId, taskId, input }) {
@@ -174,4 +260,13 @@ function buildStartCommand(task) {
 
 function isTmuxBacked(task) {
   return task.kind === 'codex' || task.kind === 'claude';
+}
+
+function buildRemoteCommandLine(task) {
+  const spec = buildRunnerCommand(task);
+  return [spec.command, ...spec.args.map(shellQuote)].join(' ');
+}
+
+function shellQuote(value) {
+  return `'${String(value).replaceAll("'", "'\\''")}'`;
 }

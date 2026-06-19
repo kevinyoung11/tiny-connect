@@ -10,19 +10,20 @@ test('agent routes create safe tasks and start runner', async () => {
   const started = [];
   const app = createTestApp(store, {
     async startTask(args) {
-      started.push(args.task.id);
+      started.push(args.task);
       await store.updateTask({ userId: args.userId, taskId: args.task.id, patch: { status: 'running' } });
     }
   });
 
   const res = await requestJson(app, '/api/agent/tasks', {
     method: 'POST',
-    body: { kind: 'shell', prompt: 'npm test', title: 'Run tests' }
+    body: { kind: 'shell', profileId: 'profile_1', prompt: 'npm test', title: 'Run tests' }
   });
 
   assert.equal(res.status, 201);
   assert.equal(res.body.task.status, 'running');
   assert.equal(started.length, 1);
+  assert.equal(started[0].metadata.profileId, 'profile_1');
 
   const snapshot = await requestJson(app, '/api/agent/snapshot');
   assert.equal(snapshot.status, 200);

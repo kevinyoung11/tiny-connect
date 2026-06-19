@@ -11,6 +11,7 @@ export function normalizeTaskInput(input = {}) {
     title: String(input.title || prompt).trim().slice(0, 120),
     model: String(input.model || '').trim(),
     projectPath: String(input.projectPath || '').trim(),
+    profileId: String(input.profileId || '').trim(),
     metadata: typeof input.metadata === 'object' && input.metadata ? input.metadata : {}
   };
 }

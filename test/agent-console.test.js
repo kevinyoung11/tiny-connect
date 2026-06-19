@@ -26,6 +26,9 @@ test('agent console refreshes and reports errors when sending input fails', asyn
         approvals: []
       });
     }
+    if (url === '/api/profiles') {
+      return jsonResponse({ profiles: [{ id: 'profile_1', name: 'Dev', host: 'dev.example.com', username: 'deploy' }] });
+    }
     if (url === '/api/agent/tasks/task_1/input') {
       return jsonResponse({ error: "can't find session: tc-codex" }, { ok: false, status: 400 });
     }
@@ -40,11 +43,13 @@ test('agent console refreshes and reports errors when sending input fails', asyn
     });
     dom.agentBtn.dispatch('click');
     await flushAsyncHandlers();
+    dom.agentProfile.value = 'profile_1';
     dom.agentInput.value = 'continue';
 
     await dom.agentInputForm.dispatch('submit', { preventDefault() {} });
 
     assert.deepEqual(calls.map((call) => [call.url, call.init.method || 'GET']), [
+      ['/api/profiles', 'GET'],
       ['/api/agent/snapshot', 'GET'],
       ['/api/agent/tasks/task_1/input', 'POST'],
       ['/api/agent/snapshot', 'GET']
@@ -91,6 +96,9 @@ test('agent console refreshes and reports errors when resolving approval fails',
         }] : []
       });
     }
+    if (url === '/api/profiles') {
+      return jsonResponse({ profiles: [{ id: 'profile_1', name: 'Dev', host: 'dev.example.com', username: 'deploy' }] });
+    }
     if (url === '/api/agent/approvals/approval_1/resolve') {
       return jsonResponse({ error: 'session not found: tc-codex' }, { ok: false, status: 404 });
     }
@@ -105,11 +113,13 @@ test('agent console refreshes and reports errors when resolving approval fails',
     });
     dom.agentBtn.dispatch('click');
     await flushAsyncHandlers();
+    dom.agentProfile.value = 'profile_1';
     const approveButton = findElement(dom.agentApprovalList, (element) => element.dataset.approvalAction === 'approved');
 
     await dom.agentApprovalList.dispatch('click', { target: approveButton });
 
     assert.deepEqual(calls.map((call) => [call.url, call.init.method || 'GET']), [
+      ['/api/profiles', 'GET'],
       ['/api/agent/snapshot', 'GET'],
       ['/api/agent/approvals/approval_1/resolve', 'POST'],
       ['/api/agent/snapshot', 'GET']
@@ -140,6 +150,9 @@ test('agent console reports task creation errors and keeps the prompt draft', as
     if (url === '/api/agent/snapshot') {
       return jsonResponse({ tasks: [], approvals: [] });
     }
+    if (url === '/api/profiles') {
+      return jsonResponse({ profiles: [{ id: 'profile_1', name: 'Dev', host: 'dev.example.com', username: 'deploy' }] });
+    }
     if (url === '/api/agent/tasks') {
       return jsonResponse({ error: 'codex command not found' }, { ok: false, status: 400 });
     }
@@ -154,6 +167,7 @@ test('agent console reports task creation errors and keeps the prompt draft', as
     });
     dom.agentBtn.dispatch('click');
     await flushAsyncHandlers();
+    dom.agentProfile.value = 'profile_1';
     dom.agentPrompt.value = 'Fix mobile scroll';
     dom.agentModel.value = 'gpt-5-codex';
     dom.agentProjectPath.value = '/repo/tiny-connect';
@@ -161,6 +175,7 @@ test('agent console reports task creation errors and keeps the prompt draft', as
     await dom.agentTaskForm.dispatch('submit', { preventDefault() {} });
 
     assert.deepEqual(calls.map((call) => [call.url, call.init.method || 'GET']), [
+      ['/api/profiles', 'GET'],
       ['/api/agent/snapshot', 'GET'],
       ['/api/agent/tasks', 'POST'],
       ['/api/agent/snapshot', 'GET']
@@ -187,6 +202,7 @@ test('agent console reports validation errors instead of ignoring mobile taps', 
   globalThis.requestAnimationFrame = (fn) => fn();
   globalThis.fetch = async (url) => {
     if (url === '/api/agent/snapshot') return jsonResponse({ tasks: [], approvals: [] });
+    if (url === '/api/profiles') return jsonResponse({ profiles: [] });
     return jsonResponse({});
   };
 
@@ -200,12 +216,15 @@ test('agent console reports validation errors instead of ignoring mobile taps', 
     await flushAsyncHandlers();
 
     await dom.agentTaskForm.dispatch('submit', { preventDefault() {} });
+    dom.agentProfile.value = 'profile_1';
+    await dom.agentTaskForm.dispatch('submit', { preventDefault() {} });
     dom.agentInput.value = 'continue';
     await dom.agentInputForm.dispatch('submit', { preventDefault() {} });
     dom.agentInput.value = '';
     await dom.agentInputForm.dispatch('submit', { preventDefault() {} });
 
     assert.deepEqual(toasts, [
+      { message: 'Select an SSH host first.', level: 'err' },
       { message: 'Task prompt is required.', level: 'err' },
       { message: 'Select a task before sending input.', level: 'err' },
       { message: 'Input is required.', level: 'err' }
@@ -236,6 +255,9 @@ test('agent console shows busy state while starting and sending tasks', async ()
         approvals: []
       });
     }
+    if (url === '/api/profiles') {
+      return jsonResponse({ profiles: [{ id: 'profile_1', name: 'Dev', host: 'dev.example.com', username: 'deploy' }] });
+    }
     if (url === '/api/agent/tasks') {
       await new Promise((resolve) => { resolveStart = resolve; });
       return jsonResponse({ task: { id: 'task_1' } });
@@ -252,6 +274,7 @@ test('agent console shows busy state while starting and sending tasks', async ()
     consoleController = initAgentConsole({ withIdentity: (init = {}) => init });
     dom.agentBtn.dispatch('click');
     await flushAsyncHandlers();
+    dom.agentProfile.value = 'profile_1';
     dom.agentPrompt.value = 'Ship it';
 
     const startPromise = dom.agentTaskForm.dispatch('submit', { preventDefault() {} });
@@ -339,6 +362,7 @@ function createAgentConsoleDom() {
     agentInputForm: createElement('form'),
     agentStartBtn: createElement('button'),
     agentSendBtn: createElement('button'),
+    agentProfile: createElement('select'),
     agentKind: createElement('select'),
     agentModel: createElement('input'),
     agentProjectPath: createElement('input'),

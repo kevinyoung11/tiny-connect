@@ -230,6 +230,7 @@ async function createTaskFlow({ req, store, runner, getScope }) {
   const task = await store.createTask({
     ...scope,
     ...input,
+    metadata: { ...(input.metadata || {}), profileId: input.profileId },
     status,
     riskLevel,
     tmuxSession: `tc-${input.kind}-${sanitizeTmuxName(Date.now().toString(36))}`
