@@ -53,6 +53,9 @@ export function createAgentRunner({ store, spawnImpl = spawn, sshClientFactory =
   }
 
   async function startSshTask({ userId, task }) {
+    if (isTmuxBacked(task)) {
+      return startSshTmuxTask({ userId, task });
+    }
     if (!profileStore) throw new Error('profileStore is required for SSH agent tasks');
     if (!keyStore) throw new Error('keyStore is required for SSH agent tasks');
     const profile = await getProfile({ userId, profileId: task.metadata.profileId });
@@ -89,6 +92,62 @@ export function createAgentRunner({ store, spawnImpl = spawn, sshClientFactory =
       throw error;
     }
     return { pid: null };
+  }
+
+  async function startSshTmuxTask({ userId, task }) {
+    const profile = await getProfileWithKey({ userId, profileId: task.metadata.profileId });
+    const commandLine = buildRemoteTmuxStartCommand(task);
+    await store.updateTask({
+      userId,
+      taskId: task.id,
+      patch: {
+        status: 'running',
+        runnerCommand: `ssh-tmux:${profile.host}:${task.tmuxSession}`,
+        metadata: {
+          ...(task.metadata || {}),
+          profileId: task.metadata.profileId,
+          sshHost: profile.host,
+          sshUsername: profile.username,
+          sshMode: 'tmux'
+        }
+      }
+    });
+    await store.logAudit?.({ userId, taskId: task.id, event: 'runner_started', message: `ssh-tmux:${profile.host}:${task.tmuxSession}` });
+    try {
+      await runSshExec({
+        profile,
+        privateKey: profile.privateKey,
+        commandLine,
+        onOutput: (chunk) => store.appendOutput({ userId, taskId: task.id, chunk: chunk.toString('utf8') })
+      });
+      if (String(task.prompt || '').trim()) {
+        await runSshExec({
+          profile,
+          privateKey: profile.privateKey,
+          commandLine: buildRemoteTmuxSendCommand(task.tmuxSession, task.prompt),
+          onOutput: (chunk) => store.appendOutput({ userId, taskId: task.id, chunk: chunk.toString('utf8') })
+        });
+      }
+      await store.logAudit?.({ userId, taskId: task.id, event: 'tmux_session_started', message: task.tmuxSession || '' });
+    } catch (error) {
+      await store.updateTask({ userId, taskId: task.id, patch: { status: 'failed', error: error.message } });
+      await store.logAudit?.({ userId, taskId: task.id, event: 'task_failed', message: error.message });
+      throw error;
+    }
+    return { pid: null };
+  }
+
+  async function getProfileWithKey({ userId, profileId }) {
+    if (!profileStore) throw new Error('profileStore is required for SSH agent tasks');
+    if (!keyStore) throw new Error('keyStore is required for SSH agent tasks');
+    const profile = await getProfile({ userId, profileId });
+    const privateKeyPath = profile.keyId
+      ? await keyStore.getPrivateKeyPath(profile.keyId, { userId })
+      : undefined;
+    return {
+      ...profile,
+      privateKey: privateKeyPath ? fs.readFileSync(privateKeyPath) : undefined
+    };
   }
 
   async function getProfile({ userId, profileId }) {
@@ -140,7 +199,15 @@ export function createAgentRunner({ store, spawnImpl = spawn, sshClientFactory =
     const text = String(input || '');
     if (!text) return { ok: true };
 
-    if (isTmuxBacked(task)) {
+    if (isRemoteTmuxBacked(task)) {
+      const profile = await getProfileWithKey({ userId, profileId: task.metadata.profileId });
+      await runSshExec({
+        profile,
+        privateKey: profile.privateKey,
+        commandLine: buildRemoteTmuxSendCommand(task.tmuxSession, text),
+        onOutput: (chunk) => store.appendOutput({ userId, taskId, chunk: chunk.toString('utf8') })
+      });
+    } else if (isTmuxBacked(task)) {
       const send = spawnImpl('tmux', ['send-keys', '-t', task.tmuxSession, text, 'Enter'], { env: process.env });
       processes.set(`${taskId}:input:${Date.now()}`, send);
       await waitForChildExit(send, 'tmux send-keys');
@@ -157,6 +224,19 @@ export function createAgentRunner({ store, spawnImpl = spawn, sshClientFactory =
   async function captureOutput({ userId, taskId, lines = 2000 }) {
     if (!userId) throw new Error('userId is required');
     const task = await store.getTask({ userId, taskId });
+    if (isRemoteTmuxBacked(task)) {
+      const profile = await getProfileWithKey({ userId, profileId: task.metadata.profileId });
+      let output = '';
+      await runSshExec({
+        profile,
+        privateKey: profile.privateKey,
+        commandLine: buildRemoteTmuxCaptureCommand(task.tmuxSession, lines),
+        onOutput: async (chunk) => { output += chunk.toString('utf8'); }
+      });
+      await replaceOutput({ userId, taskId, output });
+      await store.logAudit?.({ userId, taskId, event: 'output_captured', message: task.tmuxSession });
+      return { output };
+    }
     if (!isTmuxBacked(task)) return { output: task.outputTail || '' };
 
     const output = await captureTmuxPane(task.tmuxSession, lines);
@@ -168,6 +248,7 @@ export function createAgentRunner({ store, spawnImpl = spawn, sshClientFactory =
   async function refreshTaskStatus({ userId, taskId }) {
     if (!userId) throw new Error('userId is required');
     const task = await store.getTask({ userId, taskId });
+    if (isRemoteTmuxBacked(task)) return task;
     if (!isTmuxBacked(task) || task.status !== 'running') return task;
     if (await tmuxHasSession(task.tmuxSession)) return task;
     const output = await captureTmuxPane(task.tmuxSession, 2000);
@@ -184,7 +265,18 @@ export function createAgentRunner({ store, spawnImpl = spawn, sshClientFactory =
   async function cancelTask({ userId, taskId }) {
     const task = await store.getTask({ userId, taskId });
     const child = processes.get(taskId);
-    if (isTmuxBacked(task)) {
+    if (isRemoteTmuxBacked(task)) {
+      getProfileWithKey({ userId, profileId: task.metadata.profileId })
+        .then((profile) => runSshExec({
+          profile,
+          privateKey: profile.privateKey,
+          commandLine: buildRemoteTmuxKillCommand(task.tmuxSession),
+          onOutput: async () => {}
+        }))
+        .catch((error) => {
+          store.logAudit?.({ userId, taskId, event: 'tmux_cancel_failed', message: error.message }).catch(() => {});
+        });
+    } else if (isTmuxBacked(task)) {
       const kill = spawnImpl('tmux', ['kill-session', '-t', task.tmuxSession], { env: process.env });
       kill.on('error', (error) => {
         store.logAudit?.({ userId, taskId, event: 'tmux_cancel_failed', message: error.message }).catch(() => {});
@@ -265,9 +357,38 @@ function isTmuxBacked(task) {
   return task.kind === 'codex' || task.kind === 'claude';
 }
 
+function isRemoteTmuxBacked(task) {
+  return Boolean(task.metadata?.profileId && task.metadata?.sshMode === 'tmux' && isTmuxBacked(task));
+}
+
 function buildRemoteCommandLine(task) {
   const spec = buildRunnerCommand(task);
   return [spec.command, ...spec.args.map(shellQuote)].join(' ');
+}
+
+function buildRemoteTmuxStartCommand(task) {
+  const parts = ['tmux', 'new-session', '-A', '-d', '-s', shellQuote(task.tmuxSession)];
+  if (task.projectPath) parts.push('-c', shellQuote(task.projectPath));
+  parts.push(buildRemoteAgentBinaryCommand(task));
+  return parts.join(' ');
+}
+
+function buildRemoteAgentBinaryCommand(task) {
+  const parts = [task.kind];
+  if (task.model) parts.push('--model', shellQuote(task.model));
+  return parts.join(' ');
+}
+
+function buildRemoteTmuxSendCommand(tmuxSession, input) {
+  return ['tmux', 'send-keys', '-t', shellQuote(tmuxSession), shellQuote(input), 'Enter'].join(' ');
+}
+
+function buildRemoteTmuxCaptureCommand(tmuxSession, lines) {
+  return ['tmux', 'capture-pane', '-p', '-t', shellQuote(tmuxSession), '-S', shellQuote(`-${Number(lines) || 2000}`)].join(' ');
+}
+
+function buildRemoteTmuxKillCommand(tmuxSession) {
+  return ['tmux', 'kill-session', '-t', shellQuote(tmuxSession)].join(' ');
 }
 
 function shellQuote(value) {

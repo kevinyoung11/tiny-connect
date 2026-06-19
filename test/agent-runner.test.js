@@ -102,6 +102,104 @@ test('agent runner executes tasks through the selected ssh profile', async () =>
   assert.deepEqual(connections, [{ keyId: 'key_1', scope: { userId: 'user_1' } }]);
 });
 
+test('agent runner starts selected ssh codex tasks inside a remote tmux session', async () => {
+  const store = createMemoryAgentStore();
+  const createdClients = [];
+  const runner = createAgentRunner({
+    store,
+    sshClientFactory: () => {
+      const client = createFakeSshClient();
+      createdClients.push(client);
+      return client;
+    },
+    profileStore: createProfileStore([{
+      id: 'profile_1',
+      host: 'dev.example.com',
+      port: 22,
+      username: 'deploy'
+    }]),
+    keyStore: createKeyStore()
+  });
+  const task = await store.createTask({
+    userId: 'user_1',
+    title: 'Codex',
+    kind: 'codex',
+    prompt: 'hello',
+    status: 'queued',
+    riskLevel: 'safe',
+    tmuxSession: 'tc-codex-remote',
+    metadata: { profileId: 'profile_1' }
+  });
+
+  const started = runner.startTask({ userId: 'user_1', task });
+  await flushAsyncHandlers();
+  createdClients[0].emit('ready');
+  await flushAsyncHandlers();
+  createdClients[0].execStream.emit('close', 0);
+  await flushAsyncHandlers();
+  createdClients[1].emit('ready');
+  await flushAsyncHandlers();
+  createdClients[1].execStream.emit('close', 0);
+  await started;
+
+  assert.equal(createdClients[0].execCommand, "tmux new-session -A -d -s 'tc-codex-remote' codex");
+  assert.equal(createdClients[1].execCommand, "tmux send-keys -t 'tc-codex-remote' 'hello' Enter");
+  const updated = await store.getTask({ userId: 'user_1', taskId: task.id });
+  assert.equal(updated.status, 'running');
+  assert.equal(updated.runnerCommand, 'ssh-tmux:dev.example.com:tc-codex-remote');
+  assert.equal(updated.metadata.sshMode, 'tmux');
+});
+
+test('agent runner sends input and captures output for selected ssh tmux tasks', async () => {
+  const store = createMemoryAgentStore();
+  const createdClients = [];
+  const runner = createAgentRunner({
+    store,
+    sshClientFactory: () => {
+      const client = createFakeSshClient();
+      createdClients.push(client);
+      return client;
+    },
+    profileStore: createProfileStore([{
+      id: 'profile_1',
+      host: 'dev.example.com',
+      port: 22,
+      username: 'deploy'
+    }]),
+    keyStore: createKeyStore()
+  });
+  const task = await store.createTask({
+    userId: 'user_1',
+    title: 'Codex',
+    kind: 'codex',
+    prompt: 'hello',
+    status: 'running',
+    riskLevel: 'safe',
+    tmuxSession: 'tc-codex-remote',
+    metadata: { profileId: 'profile_1', sshMode: 'tmux' }
+  });
+
+  const send = runner.sendInput({ userId: 'user_1', taskId: task.id, input: 'continue this task' });
+  await flushAsyncHandlers();
+  createdClients[0].emit('ready');
+  await flushAsyncHandlers();
+  createdClients[0].execStream.emit('close', 0);
+  await send;
+
+  const capture = runner.captureOutput({ userId: 'user_1', taskId: task.id });
+  await flushAsyncHandlers();
+  createdClients[1].emit('ready');
+  await flushAsyncHandlers();
+  createdClients[1].execStream.emit('data', Buffer.from('codex reply\n'));
+  createdClients[1].execStream.emit('close', 0);
+  const result = await capture;
+
+  assert.equal(createdClients[0].execCommand, "tmux send-keys -t 'tc-codex-remote' 'continue this task' Enter");
+  assert.equal(createdClients[1].execCommand, "tmux capture-pane -p -t 'tc-codex-remote' -S '-2000'");
+  assert.equal(result.output, 'codex reply\n');
+  assert.equal((await store.getTask({ userId: 'user_1', taskId: task.id })).outputTail, 'codex reply\n');
+});
+
 test('agent runner keeps cancelled status when killed task exits later', async () => {
   const store = createMemoryAgentStore();
   const child = createFakeChild();
@@ -529,6 +627,22 @@ function createFakeSshClient() {
     client.ended = true;
   };
   return client;
+}
+
+function createProfileStore(profiles) {
+  return {
+    async listProfiles() {
+      return profiles;
+    }
+  };
+}
+
+function createKeyStore() {
+  return {
+    async getPrivateKeyPath() {
+      return undefined;
+    }
+  };
 }
 
 async function flushAsyncHandlers() {
