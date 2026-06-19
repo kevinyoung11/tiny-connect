@@ -7,7 +7,7 @@ import {
 } from './agent-ui.js';
 
 export function initAgentConsole({ withIdentity = (init) => init, toast = () => {} } = {}) {
-  const agentBtn = document.querySelector('#agentBtn');
+  const agentOpenButtons = [...document.querySelectorAll('[data-agent-open]')];
   const sheet = document.querySelector('#agentSheet');
   const closeBtn = document.querySelector('#closeAgentSheet');
   const form = document.querySelector('#agentTaskForm');
@@ -21,7 +21,7 @@ export function initAgentConsole({ withIdentity = (init) => init, toast = () => 
   const approvalList = document.querySelector('#agentApprovalList');
   const output = document.querySelector('#agentOutput');
   const delivery = document.querySelector('#agentDelivery');
-  if (!agentBtn || !sheet || !form) return null;
+  if (!agentOpenButtons.length || !sheet || !form) return null;
 
   const api = createAgentApi({ withIdentity });
   let selectedTaskId = '';
@@ -56,7 +56,7 @@ export function initAgentConsole({ withIdentity = (init) => init, toast = () => 
     setTimeout(() => sheet.setAttribute('hidden', ''), 220);
   }
 
-  agentBtn.addEventListener('click', open);
+  for (const button of agentOpenButtons) button.addEventListener('click', open);
   closeBtn?.addEventListener('click', close);
   taskList?.addEventListener('click', async (event) => {
     const action = event.target.closest('[data-task-action]');

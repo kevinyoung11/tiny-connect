@@ -101,6 +101,7 @@
           <span class="btn-label">Connect</span>
           <span class="spinner" id="spinner" hidden></span>
         </button>
+        <button type="button" class="agent-entry-btn" id="homeAgentBtn" data-agent-open>Open Agent Console</button>
       </form>
     </div>
 
@@ -278,7 +279,7 @@ codex ready</pre>
         <button type="button" class="action-btn" id="pasteBtn" title="Paste">Paste</button>
         <button type="button" class="action-btn" id="searchBtn" title="Search">Search</button>
         <button type="button" class="action-btn" id="filesBtn" title="Browse files" hidden>Files</button>
-        <button type="button" class="action-btn" id="agentBtn" title="Agent Console">Agent</button>
+        <button type="button" class="action-btn" id="agentBtn" data-agent-open title="Agent Console">Agent</button>
         <button type="button" class="action-btn" id="settingsBtn" title="Settings">Settings</button>
         <button type="button" class="action-btn action-btn--close" id="disconnectBtn" aria-label="Disconnect">✕</button>
       </div>
@@ -317,6 +318,7 @@ codex ready</pre>
         <button class="mkey" data-send="&#x7f;">⌫</button>
         <button class="mkey" type="button" id="mbarPasteBtn">Paste</button>
         <button class="mkey" type="button" id="copyModeBtn">Copy</button>
+        <button class="mkey mkey--agent" type="button" id="mbarAgentBtn" data-agent-open>Agent</button>
       </div>
       <form class="mbar-cmd" id="cmdForm" autocomplete="off">
         <input type="text" class="cmd-input" id="cmdInput"

@@ -249,9 +249,14 @@ function createAgentConsoleDom() {
     byId.set(`#${id}`, element);
   }
   elements.agentKind.value = 'codex';
+  elements.agentBtn.dataset.agentOpen = '';
   return {
     ...elements,
     document: {
+      querySelectorAll(selector) {
+        if (selector === '[data-agent-open]') return [elements.agentBtn];
+        return [];
+      },
       querySelector(selector) {
         return byId.get(selector) || null;
       },

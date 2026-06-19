@@ -10,6 +10,8 @@ test('main page exposes agent console shell and module import', () => {
   const css = readFileSync(resolve('public/styles.css'), 'utf8');
 
   assert.match(html, /id="agentBtn"/);
+  assert.match(html, /id="homeAgentBtn"/);
+  assert.match(html, /id="mbarAgentBtn"/);
   assert.match(html, /id="agentSheet"/);
   assert.match(html, /id="agentTaskForm"/);
   assert.match(html, /id="agentModel"/);
@@ -22,6 +24,7 @@ test('main page exposes agent console shell and module import', () => {
   assert.match(html, /id="agentDelivery"/);
   assert.match(js, /import \{ initAgentConsole \} from '\.\/agent-console\.js';/);
   assert.match(js, /initAgentConsole\(/);
+  assert.match(agentConsole, /querySelectorAll\('\[data-agent-open\]'\)/);
   assert.match(agentConsole, /data-task-action/);
   assert.match(agentConsole, /api\.cancelTask\(/);
   assert.match(agentConsole, /toast\(error\.message,\s*'err'\)/);
@@ -29,6 +32,8 @@ test('main page exposes agent console shell and module import', () => {
   assert.match(agentConsole, /projectPath:\s*projectPathInput\.value\.trim\(\)/);
   assert.match(css, /\.agent-sheet/);
   assert.match(css, /\.agent-task-action/);
+  assert.match(css, /\.agent-entry-btn/);
+  assert.match(css, /\.mkey--agent/);
   assert.match(css, /\.agent-output\s*\{[^}]*overflow-y:\s*auto/s);
   assert.match(css, /\.agent-output\s*\{[^}]*-webkit-overflow-scrolling:\s*touch/s);
   assert.match(css, /\.agent-output\s*\{[^}]*overscroll-behavior:\s*contain/s);
