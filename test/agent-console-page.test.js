@@ -29,4 +29,8 @@ test('main page exposes agent console shell and module import', () => {
   assert.match(agentConsole, /projectPath:\s*projectPathInput\.value\.trim\(\)/);
   assert.match(css, /\.agent-sheet/);
   assert.match(css, /\.agent-task-action/);
+  assert.match(css, /\.agent-output\s*\{[^}]*overflow-y:\s*auto/s);
+  assert.match(css, /\.agent-output\s*\{[^}]*-webkit-overflow-scrolling:\s*touch/s);
+  assert.match(css, /\.agent-output\s*\{[^}]*overscroll-behavior:\s*contain/s);
+  assert.match(css, /\.agent-output-tail\s*\{[^}]*overflow:\s*visible/s);
 });

@@ -28,6 +28,7 @@ export function initAgentConsole({ withIdentity = (init) => init, toast = () => 
   let pollTimer = null;
 
   async function refresh() {
+    const shouldFollowOutput = isNearBottom(output);
     const snapshot = await api.fetchSnapshot();
     const tasks = snapshot.tasks || [];
     const approvals = snapshot.approvals || [];
@@ -36,6 +37,7 @@ export function initAgentConsole({ withIdentity = (init) => init, toast = () => 
     renderAgentApprovals(approvalList, approvals);
     const selected = tasks.find((task) => task.id === selectedTaskId) || tasks[0];
     renderAgentOutputTail(output, selected?.outputTail || '');
+    if (shouldFollowOutput) scrollToBottom(output);
     renderAgentDelivery(delivery, selected?.delivery || null);
   }
 
@@ -114,4 +116,14 @@ export function initAgentConsole({ withIdentity = (init) => init, toast = () => 
   });
 
   return { open, close, refresh };
+}
+
+function isNearBottom(element, threshold = 24) {
+  if (!element) return false;
+  return element.scrollHeight - element.scrollTop - element.clientHeight <= threshold;
+}
+
+function scrollToBottom(element) {
+  if (!element) return;
+  element.scrollTop = Math.max(0, element.scrollHeight - element.clientHeight);
 }

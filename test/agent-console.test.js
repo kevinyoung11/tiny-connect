@@ -177,6 +177,55 @@ test('agent console reports task creation errors and keeps the prompt draft', as
   }
 });
 
+test('agent console follows output only when viewer is already near the bottom', async () => {
+  const originalDocument = globalThis.document;
+  const originalRequestAnimationFrame = globalThis.requestAnimationFrame;
+  const originalFetch = globalThis.fetch;
+  const dom = createAgentConsoleDom();
+  let snapshotCount = 0;
+  globalThis.document = dom.document;
+  globalThis.requestAnimationFrame = (fn) => fn();
+  globalThis.fetch = async (url) => {
+    if (url === '/api/agent/snapshot') {
+      snapshotCount += 1;
+      return jsonResponse({
+        tasks: [{
+          id: 'task_1',
+          title: 'Follow output',
+          kind: 'codex',
+          status: 'running',
+          riskLevel: 'safe',
+          outputTail: snapshotCount === 1 ? 'first line' : 'first line\nsecond line'
+        }],
+        approvals: []
+      });
+    }
+    return jsonResponse({});
+  };
+  dom.agentOutput.clientHeight = 100;
+  dom.agentOutput.scrollHeight = 300;
+  dom.agentOutput.scrollTop = 198;
+
+  let consoleController = null;
+  try {
+    consoleController = initAgentConsole({ withIdentity: (init = {}) => init });
+    await consoleController.refresh();
+
+    assert.equal(dom.agentOutput.scrollTop, 200);
+
+    dom.agentOutput.scrollTop = 40;
+    dom.agentOutput.scrollHeight = 420;
+    await consoleController.refresh();
+
+    assert.equal(dom.agentOutput.scrollTop, 40);
+  } finally {
+    consoleController?.close();
+    globalThis.document = originalDocument;
+    globalThis.requestAnimationFrame = originalRequestAnimationFrame;
+    globalThis.fetch = originalFetch;
+  }
+});
+
 function createAgentConsoleDom() {
   const byId = new Map();
   const elements = {

@@ -1251,8 +1251,18 @@ label {
   white-space: pre-wrap;
   overflow: auto;
 }
-.agent-output { padding: 10px; }
-.agent-output-tail { min-height: 140px; margin: 0; }
+.agent-output {
+  height: clamp(180px, 36dvh, 360px);
+  padding: 10px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+.agent-output-tail {
+  min-height: 100%;
+  margin: 0;
+  overflow: visible;
+}
 .agent-delivery-link {
   display: inline-flex;
   margin-top: 8px;
