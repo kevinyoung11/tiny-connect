@@ -36,7 +36,7 @@ export function buildRunnerCommand(task) {
 
 export function buildTmuxRunnerCommand(task) {
   const session = sanitizeTmuxName(task.tmuxSession || `${task.kind}-${task.id || 'task'}`);
-  const args = ['new-session', '-A', '-s', session];
+  const args = ['new-session', '-A', '-d', '-s', session];
   if (task.projectPath) args.push('-c', task.projectPath);
   args.push(buildAgentCommandLine(task));
   return { command: 'tmux', args };

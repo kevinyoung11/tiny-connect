@@ -73,6 +73,7 @@ test('builds persistent tmux runner commands for codex and claude sessions', () 
     args: [
       'new-session',
       '-A',
+      '-d',
       '-s',
       'tc-codex-abc',
       '-c',
@@ -86,7 +87,7 @@ test('builds persistent tmux runner commands for codex and claude sessions', () 
     tmuxSession: 'tc-claude-abc'
   }), {
     command: 'tmux',
-    args: ['new-session', '-A', '-s', 'tc-claude-abc', "claude 'fix mobile scroll'"]
+    args: ['new-session', '-A', '-d', '-s', 'tc-claude-abc', "claude 'fix mobile scroll'"]
   });
 });
 

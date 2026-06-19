@@ -89,7 +89,7 @@ test('agent runner starts codex tasks inside a persistent tmux session', async (
 
   assert.deepEqual(spawned, [{
     command: 'tmux',
-    args: ['new-session', '-A', '-s', 'tc-codex-test', '-c', '/repo', "codex 'fix mobile scroll'"]
+    args: ['new-session', '-A', '-d', '-s', 'tc-codex-test', '-c', '/repo', "codex 'fix mobile scroll'"]
   }]);
   const updated = await store.getTask({ userId: 'user_1', taskId: task.id });
   assert.equal(updated.runnerCommand, 'tmux');
