@@ -111,6 +111,30 @@ test('renders agent task rows with status risk and selection metadata', () => {
   });
 });
 
+test('renders agent task rows with continuous session context', () => {
+  withDocument(() => {
+    const root = createElement('div');
+
+    renderAgentTasks(root, [
+      {
+        id: 'task_1',
+        title: 'Fix mobile scroll',
+        kind: 'codex',
+        status: 'running',
+        riskLevel: 'safe',
+        model: 'gpt-5-codex',
+        projectPath: '/repo/tiny-connect',
+        tmuxSession: 'tc-codex-mobile'
+      }
+    ], { selectedTaskId: 'task_1' });
+
+    const rowText = collectText(root);
+    assert.match(rowText, /gpt-5-codex/);
+    assert.match(rowText, /\/repo\/tiny-connect/);
+    assert.match(rowText, /tc-codex-mobile/);
+  });
+});
+
 test('renders pending approval cards with approve and reject actions', () => {
   withDocument(() => {
     const root = createElement('div');
@@ -222,4 +246,11 @@ function createElement(tagName) {
       return this.attributes[name];
     }
   };
+}
+
+function collectText(node) {
+  return [
+    node.textContent || '',
+    ...(node.children || []).map(collectText)
+  ].filter(Boolean).join(' ');
 }

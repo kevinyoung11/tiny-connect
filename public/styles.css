@@ -1205,12 +1205,19 @@ label {
   font-weight: 650;
 }
 .agent-task-kind,
+.agent-task-context,
 .agent-empty-state,
 .agent-delivery-summary,
 .agent-approval-reason {
   color: var(--text-2);
   font-size: 12px;
   line-height: 1.4;
+}
+.agent-task-context {
+  margin-top: 3px;
+  overflow-wrap: anywhere;
+  color: rgba(255,255,255,.56);
+  font-size: 11px;
 }
 .agent-task-meta,
 .agent-card-header,

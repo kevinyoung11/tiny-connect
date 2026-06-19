@@ -57,6 +57,8 @@ function createTaskRow(task, selectedTaskId) {
   main.className = 'agent-task-main';
   main.append(createText('div', task.title || task.prompt || 'Untitled task', 'agent-task-title'));
   main.append(createText('div', task.kind || 'agent', 'agent-task-kind'));
+  const sessionContext = formatTaskSessionContext(task);
+  if (sessionContext) main.append(createText('div', sessionContext, 'agent-task-context'));
 
   const meta = document.createElement('div');
   meta.className = 'agent-task-meta';
@@ -160,6 +162,14 @@ function formatDeliveryStatus(delivery) {
   return [
     delivery.deliveryStatus || delivery.delivery_status || '',
     delivery.deploymentStatus || delivery.deployment_status || ''
+  ].filter(Boolean).join(' · ');
+}
+
+function formatTaskSessionContext(task) {
+  return [
+    task.model ? `model ${task.model}` : '',
+    task.projectPath || task.project_path || '',
+    task.tmuxSession || task.tmux_session || ''
   ].filter(Boolean).join(' · ');
 }
 
