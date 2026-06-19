@@ -39,3 +39,17 @@ test('main page exposes agent console shell and module import', () => {
   assert.match(css, /\.agent-output\s*\{[^}]*overscroll-behavior:\s*contain/s);
   assert.match(css, /\.agent-output-tail\s*\{[^}]*overflow:\s*visible/s);
 });
+
+test('main page opens agent console first and keeps ssh as a secondary entry', () => {
+  const html = readFileSync(resolve('public/index.html'), 'utf8');
+  const js = readFileSync(resolve('public/client.js'), 'utf8');
+
+  assert.match(html, /id="openSshBtn"/);
+  assert.match(html, /data-ssh-open/);
+  assert.match(html, /SSH Terminal/);
+  assert.match(js, /const agentConsole\s*=\s*initAgentConsole\(/);
+  assert.match(js, /agentConsole\?\.open\(\);/);
+  assert.match(js, /agentConsole\?\.close\(\);/);
+  assert.doesNotMatch(js, /\nopenModal\(\);\nloadSettings\(\);/);
+  assert.match(js, /querySelectorAll\('\[data-ssh-open\]'\)/);
+});

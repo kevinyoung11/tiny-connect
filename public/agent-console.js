@@ -12,6 +12,8 @@ export function initAgentConsole({ withIdentity = (init) => init, toast = () => 
   const closeBtn = document.querySelector('#closeAgentSheet');
   const form = document.querySelector('#agentTaskForm');
   const inputForm = document.querySelector('#agentInputForm');
+  const startButton = form?.querySelector('button[type="submit"]');
+  const sendButton = inputForm?.querySelector('button[type="submit"]');
   const kindInput = document.querySelector('#agentKind');
   const modelInput = document.querySelector('#agentModel');
   const projectPathInput = document.querySelector('#agentProjectPath');
@@ -84,7 +86,11 @@ export function initAgentConsole({ withIdentity = (init) => init, toast = () => 
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
     const prompt = promptInput.value.trim();
-    if (!prompt) return;
+    if (!prompt) {
+      toast('Task prompt is required.', 'err');
+      return;
+    }
+    setButtonBusy(startButton, true, 'Starting...');
     try {
       const result = await api.startTask({
         kind: kindInput.value,
@@ -98,19 +104,33 @@ export function initAgentConsole({ withIdentity = (init) => init, toast = () => 
     } catch (error) {
       toast(error.message, 'err');
     } finally {
+      setButtonBusy(startButton, false);
       await refresh();
     }
   });
   inputForm?.addEventListener('submit', async (event) => {
     event.preventDefault();
     const input = taskInput?.value || '';
-    if (!selectedTaskId || !input.trim()) return;
+    if (!selectedTaskId && input.trim()) {
+      toast('Select a task before sending input.', 'err');
+      return;
+    }
+    if (!input.trim()) {
+      toast('Input is required.', 'err');
+      return;
+    }
+    if (!selectedTaskId) {
+      toast('Select a task before sending input.', 'err');
+      return;
+    }
+    setButtonBusy(sendButton, true, 'Sending...');
     try {
       await api.sendInput(selectedTaskId, input);
       taskInput.value = '';
     } catch (error) {
       toast(error.message, 'err');
     } finally {
+      setButtonBusy(sendButton, false);
       await refresh();
     }
   });
@@ -126,4 +146,17 @@ function isNearBottom(element, threshold = 24) {
 function scrollToBottom(element) {
   if (!element) return;
   element.scrollTop = Math.max(0, element.scrollHeight - element.clientHeight);
+}
+
+function setButtonBusy(button, busy, label) {
+  if (!button) return;
+  if (busy) {
+    button.dataset.idleLabel = button.textContent;
+    button.textContent = label;
+    button.disabled = true;
+    return;
+  }
+  button.textContent = button.dataset.idleLabel || button.textContent;
+  delete button.dataset.idleLabel;
+  button.disabled = false;
 }

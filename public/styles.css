@@ -1122,11 +1122,14 @@ label {
 /* ─── Agent Console ─────────────────────────────────────────────────────── */
 .agent-sheet {
   position: fixed;
+  left: max(12px, env(safe-area-inset-left));
   right: max(12px, env(safe-area-inset-right));
-  top: max(72px, calc(var(--hud-h) + env(safe-area-inset-top) + 14px));
+  top: max(12px, calc(env(safe-area-inset-top) + 12px));
   bottom: max(12px, env(safe-area-inset-bottom));
   z-index: 35;
-  width: min(560px, calc(100dvw - 24px));
+  width: auto;
+  max-width: 1180px;
+  margin: 0 auto;
   padding: 16px;
   border: 1px solid var(--border-hi);
   border-radius: var(--r-lg);
@@ -1135,14 +1138,22 @@ label {
   overflow-y: auto;
   opacity: 0;
   pointer-events: none;
-  transform: translateX(16px);
+  transform: translateY(12px);
   transition: opacity .2s ease, transform .22s ease;
   -webkit-overflow-scrolling: touch;
 }
 .agent-sheet.open {
   opacity: 1;
   pointer-events: auto;
-  transform: translateX(0);
+  transform: translateY(0);
+}
+.hud.open ~ .agent-sheet {
+  top: max(72px, calc(var(--hud-h) + env(safe-area-inset-top) + 14px));
+}
+.agent-head-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 .agent-subtitle {
   margin-top: 4px;
@@ -1151,7 +1162,7 @@ label {
 }
 .agent-task-form {
   display: grid;
-  grid-template-columns: 108px minmax(118px, .7fr) minmax(160px, 1fr) minmax(220px, 1.4fr) auto;
+  grid-template-columns: 108px minmax(118px, .7fr) minmax(180px, 1fr) minmax(260px, 1.8fr) auto;
   gap: 8px;
   margin-bottom: 12px;
 }
@@ -1274,7 +1285,7 @@ label {
   overflow: auto;
 }
 .agent-output {
-  height: clamp(180px, 36dvh, 360px);
+  height: clamp(220px, 40dvh, 460px);
   padding: 10px;
   overflow-y: auto;
   overscroll-behavior: contain;
@@ -1361,11 +1372,16 @@ label {
   .agent-sheet {
     left: 8px;
     right: 8px;
-    top: max(64px, calc(var(--hud-h) + env(safe-area-inset-top) + 10px));
+    top: max(8px, calc(env(safe-area-inset-top) + 8px));
     width: auto;
+    max-width: none;
     padding: 14px;
   }
+  .hud.open ~ .agent-sheet {
+    top: max(64px, calc(var(--hud-h) + env(safe-area-inset-top) + 10px));
+  }
   .agent-task-form,
+  .agent-input-form,
   .agent-grid {
     grid-template-columns: 1fr;
   }

@@ -17,7 +17,7 @@
     <div class="backdrop" id="backdrop"></div>
 
     <!-- Connection modal -->
-    <div class="modal" id="connectModal" role="dialog" aria-modal="true" aria-label="New Connection">
+    <div class="modal" id="connectModal" role="dialog" aria-modal="true" aria-label="New Connection" hidden>
       <div class="modal-brand">
         <div class="modal-icon">
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
@@ -36,6 +36,7 @@
             <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1A2 2 0 1 1 4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.6-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9l-.1-.1A2 2 0 1 1 7 4.2l.1.1a1.7 1.7 0 0 0 1.9.3h.1a1.7 1.7 0 0 0 1-1.6V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1A2 2 0 1 1 19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9v.1a1.7 1.7 0 0 0 1.6 1h.1a2 2 0 1 1 0 4H21a1.7 1.7 0 0 0-1.6 1z"/>
           </svg>
         </button>
+        <button type="button" class="btn-x" id="closeConnectModal" aria-label="Close">✕</button>
       </div>
 
       <form id="connectForm" autocomplete="off" novalidate>
@@ -101,7 +102,7 @@
           <span class="btn-label">Connect</span>
           <span class="spinner" id="spinner" hidden></span>
         </button>
-        <button type="button" class="agent-entry-btn" id="homeAgentBtn" data-agent-open>Open Agent Console</button>
+        <button type="button" class="agent-entry-btn" id="homeAgentBtn" data-agent-open>Back to Agent Console</button>
       </form>
     </div>
 
@@ -280,6 +281,7 @@ codex ready</pre>
         <button type="button" class="action-btn" id="searchBtn" title="Search">Search</button>
         <button type="button" class="action-btn" id="filesBtn" title="Browse files" hidden>Files</button>
         <button type="button" class="action-btn" id="agentBtn" data-agent-open title="Agent Console">Agent</button>
+        <button type="button" class="action-btn" data-ssh-open title="New SSH connection">SSH</button>
         <button type="button" class="action-btn" id="settingsBtn" title="Settings">Settings</button>
         <button type="button" class="action-btn action-btn--close" id="disconnectBtn" aria-label="Disconnect">✕</button>
       </div>
@@ -358,13 +360,16 @@ codex ready</pre>
       <div class="debug-list" id="debugList"></div>
     </div>
 
-    <div class="agent-sheet" id="agentSheet" role="dialog" aria-modal="true" aria-label="Agent Console" hidden>
+    <div class="agent-sheet agent-primary" id="agentSheet" role="main" aria-label="Agent Console" hidden>
       <div class="sheet-head">
         <div>
           <h2 class="sheet-title">Agent Console</h2>
           <p class="agent-subtitle">Codex / Claude tasks, approvals, and delivery</p>
         </div>
-        <button type="button" class="btn-x" id="closeAgentSheet" aria-label="Close">✕</button>
+        <div class="agent-head-actions">
+          <button type="button" class="mini-btn" id="openSshBtn" data-ssh-open>SSH Terminal</button>
+          <button type="button" class="btn-x" id="closeAgentSheet" aria-label="Close">✕</button>
+        </div>
       </div>
       <form class="agent-task-form" id="agentTaskForm" autocomplete="off">
         <select id="agentKind" aria-label="Agent kind">

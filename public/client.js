@@ -79,6 +79,8 @@ const TERM_OPTS = {
 /* ─── DOM refs ───────────────────────────────────────────────────────────── */
 const backdrop          = document.querySelector('#backdrop');
 const connectModal      = document.querySelector('#connectModal');
+const closeConnectModalBtn = document.querySelector('#closeConnectModal');
+const sshOpenButtons    = [...document.querySelectorAll('[data-ssh-open]')];
 const connectForm       = document.querySelector('#connectForm');
 const connectBtn        = document.querySelector('#connectBtn');
 const btnLabel          = connectBtn.querySelector('.btn-label');
@@ -296,11 +298,11 @@ let debugTab      = 'logs';
 let pageSuspended = document.visibilityState === 'hidden';
 
 /* ─── Init ───────────────────────────────────────────────────────────────── */
-openModal();
 loadSettings();
 loadKeys();
 loadProfiles();
-initAgentConsole({ withIdentity: withDeviceIdentity, toast });
+const agentConsole = initAgentConsole({ withIdentity: withDeviceIdentity, toast });
+agentConsole?.open();
 
 /* ─── Connect ────────────────────────────────────────────────────────────── */
 connectForm.addEventListener('submit', e => { e.preventDefault(); doConnect(); });
@@ -326,6 +328,7 @@ function doConnect() {
     sess.connected = true;
     setSessionStatus(sess, config.tmux ? 'attaching_tmux' : 'connected');
     closeModal();
+    agentConsole?.close();
     showHud();
     showMbar();
     setActiveSession(sess);
@@ -445,6 +448,8 @@ function stopHeartbeat(sess) {
 
 /* ─── Multi-tab management ───────────────────────────────────────────────── */
 newTabBtn.addEventListener('click', () => openModal());
+for (const button of sshOpenButtons) button.addEventListener('click', () => openModal());
+closeConnectModalBtn?.addEventListener('click', () => closeModal());
 
 function setActiveSession(sess) {
   if (activeSession === sess) { sess.activate(); return; }
@@ -475,7 +480,7 @@ function closeSession(sess) {
     hideHud();
     hideMbar();
     hideTabBar();
-    openModal();
+    agentConsole?.open();
   }
 }
 
