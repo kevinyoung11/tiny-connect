@@ -126,6 +126,57 @@ test('agent console refreshes and reports errors when resolving approval fails',
   }
 });
 
+test('agent console reports task creation errors and keeps the prompt draft', async () => {
+  const originalDocument = globalThis.document;
+  const originalRequestAnimationFrame = globalThis.requestAnimationFrame;
+  const originalFetch = globalThis.fetch;
+  const dom = createAgentConsoleDom();
+  const calls = [];
+  const toasts = [];
+  globalThis.document = dom.document;
+  globalThis.requestAnimationFrame = (fn) => fn();
+  globalThis.fetch = async (url, init = {}) => {
+    calls.push({ url, init });
+    if (url === '/api/agent/snapshot') {
+      return jsonResponse({ tasks: [], approvals: [] });
+    }
+    if (url === '/api/agent/tasks') {
+      return jsonResponse({ error: 'codex command not found' }, { ok: false, status: 400 });
+    }
+    return jsonResponse({});
+  };
+
+  let consoleController = null;
+  try {
+    consoleController = initAgentConsole({
+      withIdentity: (init = {}) => init,
+      toast: (message, level) => toasts.push({ message, level })
+    });
+    dom.agentBtn.dispatch('click');
+    await flushAsyncHandlers();
+    dom.agentPrompt.value = 'Fix mobile scroll';
+    dom.agentModel.value = 'gpt-5-codex';
+    dom.agentProjectPath.value = '/repo/tiny-connect';
+
+    await dom.agentTaskForm.dispatch('submit', { preventDefault() {} });
+
+    assert.deepEqual(calls.map((call) => [call.url, call.init.method || 'GET']), [
+      ['/api/agent/snapshot', 'GET'],
+      ['/api/agent/tasks', 'POST'],
+      ['/api/agent/snapshot', 'GET']
+    ]);
+    assert.equal(toasts[0].message, 'codex command not found');
+    assert.equal(toasts[0].level, 'err');
+    assert.equal(dom.agentPrompt.value, 'Fix mobile scroll');
+    assert.match(collectText(dom.agentTaskList), /No agent tasks yet/);
+  } finally {
+    consoleController?.close();
+    globalThis.document = originalDocument;
+    globalThis.requestAnimationFrame = originalRequestAnimationFrame;
+    globalThis.fetch = originalFetch;
+  }
+});
+
 function createAgentConsoleDom() {
   const byId = new Map();
   const elements = {

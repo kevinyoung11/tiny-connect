@@ -83,16 +83,21 @@ export function initAgentConsole({ withIdentity = (init) => init, toast = () => 
     event.preventDefault();
     const prompt = promptInput.value.trim();
     if (!prompt) return;
-    const result = await api.startTask({
-      kind: kindInput.value,
-      prompt,
-      title: prompt,
-      model: modelInput.value.trim(),
-      projectPath: projectPathInput.value.trim()
-    });
-    selectedTaskId = result.task?.id || selectedTaskId;
-    promptInput.value = '';
-    await refresh();
+    try {
+      const result = await api.startTask({
+        kind: kindInput.value,
+        prompt,
+        title: prompt,
+        model: modelInput.value.trim(),
+        projectPath: projectPathInput.value.trim()
+      });
+      selectedTaskId = result.task?.id || selectedTaskId;
+      promptInput.value = '';
+    } catch (error) {
+      toast(error.message, 'err');
+    } finally {
+      await refresh();
+    }
   });
   inputForm?.addEventListener('submit', async (event) => {
     event.preventDefault();
