@@ -282,9 +282,18 @@ async function refreshTaskOutput({ store, runner, scope, taskId }) {
   try {
     await runner.captureOutput({ ...scope, taskId });
     return await store.getTask({ ...scope, taskId });
-  } catch {
+  } catch (error) {
+    if (isMissingTmuxSessionError(error)) {
+      await store.updateTask({ ...scope, taskId: task.id, patch: { status: 'failed', error: error.message } });
+      await store.logAudit?.({ ...scope, taskId: task.id, event: 'task_failed', message: error.message });
+      return await store.getTask({ ...scope, taskId });
+    }
     return task;
   }
+}
+
+function isMissingTmuxSessionError(error) {
+  return /can't find session|no such session|session not found/i.test(error?.message || '');
 }
 
 function asyncHandler(fn) {

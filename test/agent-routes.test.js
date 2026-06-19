@@ -249,6 +249,29 @@ test('agent routes refresh tmux output through runner capture before returning d
   assert.equal(snapshot.body.tasks[0].outputTail, 'captured-pane-output');
 });
 
+test('agent routes mark tmux tasks failed when output capture reports a missing session', async () => {
+  const store = createMemoryAgentStore();
+  const app = createTestApp(store, {
+    async startTask({ userId, task }) {
+      await store.updateTask({ userId, taskId: task.id, patch: { status: 'running' } });
+    },
+    async sendInput() {},
+    async captureOutput() {
+      throw new Error("can't find session: tc-codex-missing");
+    }
+  });
+  const created = await requestJson(app, '/api/agent/tasks', {
+    method: 'POST',
+    body: { kind: 'codex', prompt: 'work', title: 'Missing tmux' }
+  });
+
+  const snapshot = await requestJson(app, '/api/agent/snapshot');
+
+  assert.equal(snapshot.status, 200);
+  assert.equal(snapshot.body.tasks[0].status, 'failed');
+  assert.match(snapshot.body.tasks[0].error, /can't find session/);
+});
+
 test('agent routes create running command approvals and send approved commands to the task', async () => {
   const store = createMemoryAgentStore();
   const sent = [];
