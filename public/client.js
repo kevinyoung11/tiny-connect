@@ -185,7 +185,7 @@ class Session {
       this.term.unicode.activeVersion = '11';
     } catch (_) {}
     this.term.open(this.el);
-    this.touchScrollCleanup = installMobileTerminalScroller(this.el, this.term, (data) => this.send({ type: 'input', data }));
+    this.touchScrollCleanup = installMobileTerminalScroller(this.el);
     this.term.onData(data => this.send({ type: 'input', data }));
   }
 
@@ -225,29 +225,21 @@ class Session {
   }
 }
 
-function installMobileTerminalScroller(pane, term, sendInput) {
+function installMobileTerminalScroller(pane) {
   const catcher = document.createElement('div');
   catcher.className = 'terminal-scroll-catcher';
   pane.append(catcher);
 
   let startX = 0;
   let lastY = 0;
-  let pendingPixels = 0;
   let pointerId = null;
   let dragging = false;
-
-  const lineHeight = () => {
-    const screen = pane.querySelector('.xterm-screen');
-    const height = Number.parseFloat(getComputedStyle(screen || pane).lineHeight);
-    return Number.isFinite(height) && height > 0 ? height : (term.options.fontSize || 14) * (term.options.lineHeight || 1.3);
-  };
 
   const onPointerDown = (event) => {
     if (event.pointerType === 'mouse' || event.target.closest('button,input,textarea,select')) return;
     pointerId = event.pointerId;
     startX = event.clientX;
     lastY = event.clientY;
-    pendingPixels = 0;
     dragging = true;
     catcher.setPointerCapture?.(event.pointerId);
     event.preventDefault();
@@ -261,13 +253,8 @@ function installMobileTerminalScroller(pane, term, sendInput) {
 
     if (Math.abs(deltaY) < 1 || deltaX > Math.abs(deltaY) * 1.4) return;
 
-    pendingPixels += deltaY;
-    const lines = Math.trunc(pendingPixels / lineHeight());
-    if (lines === 0) return;
-
-    term.scrollLines(lines);
-    sendInput(wheelSequence(lines));
-    pendingPixels -= lines * lineHeight();
+    const viewport = pane.querySelector('.xterm-viewport');
+    if (viewport) viewport.scrollTop += deltaY;
     event.preventDefault();
   };
 
@@ -276,7 +263,6 @@ function installMobileTerminalScroller(pane, term, sendInput) {
     catcher.releasePointerCapture?.(event.pointerId);
     pointerId = null;
     dragging = false;
-    pendingPixels = 0;
   };
 
   catcher.addEventListener('pointerdown', onPointerDown);
@@ -287,12 +273,6 @@ function installMobileTerminalScroller(pane, term, sendInput) {
   return () => {
     catcher.remove();
   };
-}
-
-function wheelSequence(lines) {
-  const amount = Math.min(8, Math.abs(lines));
-  const code = lines > 0 ? '\x1b[<64;1;1M\x1b[<64;1;1m' : '\x1b[<65;1;1M\x1b[<65;1;1m';
-  return code.repeat(amount);
 }
 
 /* ─── State ──────────────────────────────────────────────────────────────── */

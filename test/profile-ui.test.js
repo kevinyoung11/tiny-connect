@@ -58,15 +58,15 @@ test('mobile terminal viewport keeps native momentum scrolling enabled', () => {
   assert.match(js, /scrollback:\s*10000,/);
 });
 
-test('mobile terminal drag gestures use an overlay and forward wheel input', () => {
+test('mobile terminal drag gestures scroll locally without sending mouse input', () => {
   const js = readFileSync(resolve('public/client.js'), 'utf8');
 
-  assert.match(js, /this\.touchScrollCleanup\s*=\s*installMobileTerminalScroller\(this\.el,\s*this\.term,\s*\(data\)\s*=>\s*this\.send\(\{ type:\s*'input',\s*data \}\)\);/);
-  assert.match(js, /function installMobileTerminalScroller\(pane,\s*term,\s*sendInput\)/);
+  assert.match(js, /this\.touchScrollCleanup\s*=\s*installMobileTerminalScroller\(this\.el\);/);
+  assert.match(js, /function installMobileTerminalScroller\(pane\)/);
   assert.match(js, /className\s*=\s*'terminal-scroll-catcher'/);
-  assert.match(js, /term\.scrollLines\(lines\);/);
-  assert.match(js, /sendInput\(wheelSequence\(lines\)\);/);
-  assert.match(js, /function wheelSequence\(lines\)/);
+  assert.match(js, /viewport\.scrollTop\s*\+=\s*deltaY;/);
+  assert.doesNotMatch(js, /sendInput\(wheelSequence/);
+  assert.doesNotMatch(js, /function wheelSequence\(lines\)/);
   assert.match(js, /addEventListener\('pointermove', onPointerMove\);/);
   assert.match(js, /this\.touchScrollCleanup\?\.\(\);/);
 });
